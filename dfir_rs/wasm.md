@@ -9,17 +9,17 @@ Install `wasm-bindgen-cli` globally: `cargo install wasm-bindgen-cli`.
 
 ### Running Tests
 
-Run (in the root hydroflow directory):
+Run (in the root dfir_rs directory):
 
 ```
-CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown -p hydroflow --tests
+CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown -p dfir_rs --tests
 ```
 
 Flag explanation:
 
 - `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner`: Tells
   Cargo to use the test harness provided by `wasm-bindgen-cli`.
-- `-p hydroflow`: Only run tests in the hydroflow directory.
+- `-p dfir_rs`: Only run tests in the dfir_rs directory.
 - `--tests`: Only run tests; do not build examples. Many (possibly all) of the
   examples in hydroflow/examples currently do not compile to WASM because they
   use networking.
