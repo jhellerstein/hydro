@@ -1308,6 +1308,7 @@ dependencies = [
  "example_test",
  "futures",
  "getrandom 0.2.15",
+ "httparse",
  "hydro_deploy_integration",
  "include_mdtests",
  "insta",

@@ -24,6 +24,10 @@ mod tcp;
 #[cfg(not(target_arch = "wasm32"))]
 pub use tcp::*;
 
+mod http;
+#[cfg(not(target_arch = "wasm32"))]
+pub use http::*;
+
 #[cfg(unix)]
 mod socket;
 #[cfg(unix)]
@@ -229,6 +233,31 @@ pub fn connect_tcp_lines() -> (
     TcpFramedStream<tokio_util::codec::LinesCodec>,
 ) {
     connect_tcp(tokio_util::codec::LinesCodec::new())
+}
+
+/// Returns an HTTP server that can receive HTTP requests and send back HTTP responses.
+///
+/// The input `addr` may have a port of `0`, the returned `SocketAddr` will be the address of the newly bound endpoint.
+/// When an `(HttpResponse, SocketAddr)` pair is fed to the `Sender`, the response will be sent back to the client
+/// that made the corresponding request from that address.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn bind_http_server(
+    addr: SocketAddr,
+) -> (
+    unsync::mpsc::Sender<(HttpResponse, SocketAddr)>,
+    unsync::mpsc::Receiver<Result<(HttpRequest, SocketAddr), HttpCodecError>>,
+    SocketAddr,
+) {
+    bind_tcp(addr, HttpServerCodec::new()).await.unwrap()
+}
+
+/// Returns an HTTP client that can send HTTP requests and receive HTTP responses.
+///
+/// `(HttpRequest, SocketAddr)` pairs fed to the returned `Sender` will initiate HTTP requests to the specified `SocketAddr`.
+/// These connections will be cached and reused. When the server sends a response back it will be available via the returned `Receiver`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn connect_http_client() -> (TcpFramedSink<HttpRequest>, TcpFramedStream<HttpClientCodec>) {
+    connect_tcp(HttpClientCodec::new())
 }
 
 /// Sort a slice using a key fn which returns references.
