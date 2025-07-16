@@ -439,6 +439,106 @@ impl HttpResponse {
         Self::error(404, "Not Found")
     }
 
+    /// Create a 201 Created response.
+    pub fn created() -> Self {
+        Self {
+            version: "HTTP/1.1".to_string(),
+            status_code: 201,
+            status_text: "Created".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create a 204 No Content response.
+    pub fn no_content() -> Self {
+        Self {
+            version: "HTTP/1.1".to_string(),
+            status_code: 204,
+            status_text: "No Content".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create a 400 Bad Request response.
+    pub fn bad_request() -> Self {
+        Self::error(400, "Bad Request")
+    }
+
+    /// Create a 401 Unauthorized response.
+    pub fn unauthorized() -> Self {
+        Self::error(401, "Unauthorized")
+    }
+
+    /// Create a 403 Forbidden response.
+    pub fn forbidden() -> Self {
+        Self::error(403, "Forbidden")
+    }
+
+    /// Create a 405 Method Not Allowed response.
+    pub fn method_not_allowed() -> Self {
+        Self::error(405, "Method Not Allowed")
+    }
+
+    /// Create a 409 Conflict response.
+    pub fn conflict() -> Self {
+        Self::error(409, "Conflict")
+    }
+
+    /// Create a 422 Unprocessable Entity response.
+    pub fn unprocessable_entity() -> Self {
+        Self::error(422, "Unprocessable Entity")
+    }
+
+    /// Create a 500 Internal Server Error response.
+    pub fn internal_server_error() -> Self {
+        Self::error(500, "Internal Server Error")
+    }
+
+    /// Create a 502 Bad Gateway response.
+    pub fn bad_gateway() -> Self {
+        Self::error(502, "Bad Gateway")
+    }
+
+    /// Create a 503 Service Unavailable response.
+    pub fn service_unavailable() -> Self {
+        Self::error(503, "Service Unavailable")
+    }
+
+    /// Create a 301 Moved Permanently redirect response.
+    pub fn moved_permanently(location: impl Into<String>) -> Self {
+        Self {
+            version: "HTTP/1.1".to_string(),
+            status_code: 301,
+            status_text: "Moved Permanently".to_string(),
+            headers: HashMap::from([("Location".to_string(), location.into())]),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create a 302 Found (temporary redirect) response.
+    pub fn found(location: impl Into<String>) -> Self {
+        Self {
+            version: "HTTP/1.1".to_string(),
+            status_code: 302,
+            status_text: "Found".to_string(),
+            headers: HashMap::from([("Location".to_string(), location.into())]),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create a 304 Not Modified response.
+    pub fn not_modified() -> Self {
+        Self {
+            version: "HTTP/1.1".to_string(),
+            status_code: 304,
+            status_text: "Not Modified".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
     /// Add a header to the response.
     pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.headers.insert(name.into(), value.into());
@@ -1479,5 +1579,127 @@ mod tests {
         assert!(full_url.starts_with("/api/search?"));
         assert!(full_url.contains("q=rust+programming"));
         assert!(full_url.contains("limit=10"));
+    }
+
+    #[test]
+    fn test_status_code_helpers() {
+        // Test success responses
+        let ok_resp = HttpResponse::ok();
+        assert_eq!(ok_resp.status_code, 200);
+        assert_eq!(ok_resp.status_text, "OK");
+
+        let created_resp = HttpResponse::created();
+        assert_eq!(created_resp.status_code, 201);
+        assert_eq!(created_resp.status_text, "Created");
+
+        let no_content_resp = HttpResponse::no_content();
+        assert_eq!(no_content_resp.status_code, 204);
+        assert_eq!(no_content_resp.status_text, "No Content");
+
+        // Test redirect responses
+        let moved_resp = HttpResponse::moved_permanently("/new-location");
+        assert_eq!(moved_resp.status_code, 301);
+        assert_eq!(moved_resp.status_text, "Moved Permanently");
+        assert_eq!(
+            moved_resp.headers.get("Location"),
+            Some(&"/new-location".to_string())
+        );
+
+        let found_resp = HttpResponse::found("https://example.com/redirect");
+        assert_eq!(found_resp.status_code, 302);
+        assert_eq!(found_resp.status_text, "Found");
+        assert_eq!(
+            found_resp.headers.get("Location"),
+            Some(&"https://example.com/redirect".to_string())
+        );
+
+        let not_modified_resp = HttpResponse::not_modified();
+        assert_eq!(not_modified_resp.status_code, 304);
+        assert_eq!(not_modified_resp.status_text, "Not Modified");
+
+        // Test client error responses
+        let bad_request_resp = HttpResponse::bad_request();
+        assert_eq!(bad_request_resp.status_code, 400);
+        assert_eq!(bad_request_resp.status_text, "Bad Request");
+
+        let unauthorized_resp = HttpResponse::unauthorized();
+        assert_eq!(unauthorized_resp.status_code, 401);
+        assert_eq!(unauthorized_resp.status_text, "Unauthorized");
+
+        let forbidden_resp = HttpResponse::forbidden();
+        assert_eq!(forbidden_resp.status_code, 403);
+        assert_eq!(forbidden_resp.status_text, "Forbidden");
+
+        let not_found_resp = HttpResponse::not_found();
+        assert_eq!(not_found_resp.status_code, 404);
+        assert_eq!(not_found_resp.status_text, "Not Found");
+
+        let method_not_allowed_resp = HttpResponse::method_not_allowed();
+        assert_eq!(method_not_allowed_resp.status_code, 405);
+        assert_eq!(method_not_allowed_resp.status_text, "Method Not Allowed");
+
+        let conflict_resp = HttpResponse::conflict();
+        assert_eq!(conflict_resp.status_code, 409);
+        assert_eq!(conflict_resp.status_text, "Conflict");
+
+        let unprocessable_resp = HttpResponse::unprocessable_entity();
+        assert_eq!(unprocessable_resp.status_code, 422);
+        assert_eq!(unprocessable_resp.status_text, "Unprocessable Entity");
+
+        // Test server error responses
+        let server_error_resp = HttpResponse::internal_server_error();
+        assert_eq!(server_error_resp.status_code, 500);
+        assert_eq!(server_error_resp.status_text, "Internal Server Error");
+
+        let bad_gateway_resp = HttpResponse::bad_gateway();
+        assert_eq!(bad_gateway_resp.status_code, 502);
+        assert_eq!(bad_gateway_resp.status_text, "Bad Gateway");
+
+        let service_unavailable_resp = HttpResponse::service_unavailable();
+        assert_eq!(service_unavailable_resp.status_code, 503);
+        assert_eq!(service_unavailable_resp.status_text, "Service Unavailable");
+    }
+
+    #[test]
+    fn test_status_code_helpers_with_chaining() {
+        // Test that status code helpers work with method chaining
+        let api_error = HttpResponse::bad_request()
+            .with_header("Content-Type", "application/json")
+            .with_body(br#"{"error": "Invalid input"}"#.to_vec());
+
+        assert_eq!(api_error.status_code, 400);
+        assert_eq!(
+            api_error.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
+        assert_eq!(api_error.body, br#"{"error": "Invalid input"}"#);
+
+        // Test redirect with additional headers
+        let redirect = HttpResponse::found("/login")
+            .with_header("Cache-Control", "no-cache")
+            .with_header("Set-Cookie", "session=expired; Max-Age=0");
+
+        assert_eq!(redirect.status_code, 302);
+        assert_eq!(
+            redirect.headers.get("Location"),
+            Some(&"/login".to_string())
+        );
+        assert_eq!(
+            redirect.headers.get("Cache-Control"),
+            Some(&"no-cache".to_string())
+        );
+        assert!(redirect.headers.contains_key("Set-Cookie"));
+
+        // Test created response with location header
+        let created_resource = HttpResponse::created()
+            .with_header("Location", "/api/users/123")
+            .with_header("Content-Type", "application/json")
+            .with_body(br#"{"id": 123, "status": "created"}"#.to_vec());
+
+        assert_eq!(created_resource.status_code, 201);
+        assert_eq!(
+            created_resource.headers.get("Location"),
+            Some(&"/api/users/123".to_string())
+        );
     }
 }
