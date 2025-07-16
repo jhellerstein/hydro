@@ -100,7 +100,11 @@ impl HttpCodec {
             Ok(httparse::Status::Complete(header_len)) => {
                 let method = req.method.unwrap().to_string();
                 let path = req.path.unwrap().to_string();
-                let version = format!("HTTP/{}.{}", req.version.unwrap(), req.version.unwrap());
+                let version = match req.version.unwrap() {
+                    0 => "HTTP/1.0".to_string(),
+                    1 => "HTTP/1.1".to_string(),
+                    v => format!("HTTP/1.{}", v), // Future-proof for other minor versions
+                };
 
                 let mut headers_map = HashMap::new();
                 let mut cookies = HashMap::new();
