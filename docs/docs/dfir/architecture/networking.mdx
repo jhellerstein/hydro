@@ -3,9 +3,9 @@ sidebar_position: 3
 ---
 import CodeBlock from '@theme/CodeBlock';
 import echoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server/server.rs';
-import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/tcp_echo_server.rs';
-import httpServerCode from '!!raw-loader!../../../../dfir_rs/examples/http_server.rs';
-import httpClientCode from '!!raw-loader!../../../../dfir_rs/examples/http_client.rs';
+import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/tcp_echo_server/main.rs';
+import httpServerCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/server.rs';
+import httpClientCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/client.rs';
 import { getLines } from '../../../src/util';
 
 # Networking with DFIR
@@ -290,8 +290,8 @@ async fn main() {
 
 For complete working examples, see:
 - [UDP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server/server.rs)
-- [TCP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/tcp_echo_server.rs)
-- [HTTP Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server.rs)
-- [HTTP Client](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_client.rs)
+- [TCP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/tcp_echo_server/main.rs)
+- [HTTP Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/server.rs)
+- [HTTP Client](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/client.rs)
 
 This networking foundation enables building sophisticated distributed systems with DFIR's declarative, stream-oriented programming model.

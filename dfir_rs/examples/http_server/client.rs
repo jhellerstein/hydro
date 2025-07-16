@@ -3,7 +3,14 @@ use std::net::SocketAddr;
 
 use dfir_rs::{dfir_syntax, var_args};
 use tokio::task::LocalSet;
+
 //[/imports]//
+use crate::Opts;
+
+/// Run the HTTP client
+pub async fn run_client(opts: &Opts) {
+    run_http_client(opts.address).await.unwrap();
+}
 
 /// Example HTTP client using DFIR
 ///
@@ -12,17 +19,15 @@ use tokio::task::LocalSet;
 /// 2. Processes responses through a DFIR pipeline
 ///
 /// Make sure to run the http_server example first:
-/// cargo run --example http_server
+/// cargo run --example http_server -- --role server
 ///
 /// Then run this client:
-/// cargo run --example http_client
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// cargo run --example http_server -- --role client
+async fn run_http_client(server_addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     //[connect_client]//
     // HTTP operations require LocalSet - wrap HTTP operations in LocalSet
     LocalSet::new().run_until(async {
-        // Connect to the HTTP server (assumes server is running on localhost:3000)
-        let server_addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        // Connect to the HTTP server
         let (request_send, response_recv) = dfir_rs::util::connect_http_client();
 
         println!("🔗 HTTP Client connecting to http://{}", server_addr);

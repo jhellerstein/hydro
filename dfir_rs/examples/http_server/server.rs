@@ -3,7 +3,14 @@ use std::net::SocketAddr;
 
 use dfir_rs::{dfir_syntax, var_args};
 use tokio::task::LocalSet;
+
 //[/imports]//
+use crate::Opts;
+
+/// Run the HTTP server
+pub async fn run_server(opts: &Opts) {
+    run_http_server(opts.address).await.unwrap();
+}
 
 /// Example HTTP server using DFIR
 ///
@@ -13,13 +20,11 @@ use tokio::task::LocalSet;
 /// 3. Sends responses back to clients
 ///
 /// Usage: cargo run --example http_server
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn run_http_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     //[bind_server]//
     // HTTP operations require LocalSet - wrap TCP/HTTP operations in LocalSet
     LocalSet::new().run_until(async {
         // Bind HTTP server to localhost:3000
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         let (response_send, request_recv, bound_addr) = dfir_rs::util::bind_http_server(addr).await;
 
         println!("🚀 HTTP Server listening on http://{}", bound_addr);
