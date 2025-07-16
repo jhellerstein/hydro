@@ -1,6 +1,9 @@
+//[imports]//
 use std::net::SocketAddr;
 
 use dfir_rs::{dfir_syntax, var_args};
+use tokio::task::LocalSet;
+//[/imports]//
 
 /// Example HTTP client using DFIR
 ///
@@ -15,13 +18,18 @@ use dfir_rs::{dfir_syntax, var_args};
 /// cargo run --example http_client
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to the HTTP server (assumes server is running on localhost:3000)
-    let server_addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let (request_send, response_recv) = dfir_rs::util::connect_http_client();
+    //[connect_client]//
+    // HTTP operations require LocalSet - wrap HTTP operations in LocalSet
+    LocalSet::new().run_until(async {
+        // Connect to the HTTP server (assumes server is running on localhost:3000)
+        let server_addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        let (request_send, response_recv) = dfir_rs::util::connect_http_client();
 
-    println!("🔗 HTTP Client connecting to http://{}", server_addr);
+        println!("🔗 HTTP Client connecting to http://{}", server_addr);
+        //[/connect_client]//
 
     let mut client = dfir_syntax! {
+        //[send_requests]//
         // Create a series of HTTP requests and send them
         source_iter([
             dfir_rs::util::HttpRequest::get("/"),
@@ -34,7 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ])
         -> map(|request| (request, server_addr))
         -> dest_sink(request_send);
+        //[/send_requests]//
 
+        //[response_processing]//
         // Process responses using demux for clean separation
         responses = source_stream(response_recv) -> demux(|result, var_args!(success, error)| {
             match result {
@@ -76,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             -> for_each(|err| {
                 println!("❌ Error: {:?}", err);
             });
+        //[/response_processing]//
     };
 
     // Run the client
@@ -84,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => println!("\n✅ Client completed successfully"),
         Err(_) => println!("\n⏰ Client finished processing requests and responses"),
     }
+    }).await;
 
     Ok(())
 }

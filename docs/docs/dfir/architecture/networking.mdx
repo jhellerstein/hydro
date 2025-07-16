@@ -1,6 +1,12 @@
 ---
 sidebar_position: 3
 ---
+import CodeBlock from '@theme/CodeBlock';
+import echoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server/server.rs';
+import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/tcp_echo_server.rs';
+import httpServerCode from '!!raw-loader!../../../../dfir_rs/examples/http_server.rs';
+import httpClientCode from '!!raw-loader!../../../../dfir_rs/examples/http_client.rs';
+import { getLines } from '../../../src/util';
 
 # Networking with DFIR
 
@@ -11,7 +17,7 @@ DFIR provides comprehensive networking support for building distributed systems 
 DFIR's networking model follows these key principles:
 
 - **Stream-oriented**: Network data flows as streams through DFIR operators
-- **Declarative**: Network logic is expressed as dataflow graphs
+- **Dataflow Programming**: Network logic is expressed as dataflow graphs
 - **Protocol-agnostic**: Similar patterns work across UDP, TCP, and HTTP
 - **Error-aware**: Built-in error handling with demux routing
 - **Address-aware**: All network operations include source/destination addressing
@@ -42,15 +48,19 @@ UDP provides connectionless, best-effort message delivery. DFIR's UDP support is
 
 ### UDP Echo Server
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/echo_server/server.rs?getLines(code, 'imports')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(echoServerCode, 'imports')}</CodeBlock>
+
+UDP servers start by binding to a socket address to create the inbound and outbound streams:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(echoServerCode, 'bind_udp')}</CodeBlock>
 
 The UDP echo server demonstrates the fundamental DFIR networking pattern:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/echo_server/server.rs?getLines(code, 'dfir_flow')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(echoServerCode, 'dfir_flow')}</CodeBlock>
+
+Finally, compile and run the DFIR graph:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(echoServerCode, 'run_server')}</CodeBlock>
 
 Key UDP characteristics:
 - **Connectionless**: Each message is independent
@@ -64,35 +74,34 @@ TCP provides reliable, connection-oriented byte streams. DFIR's TCP support hand
 
 ### TCP Echo Server
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/tcp_echo_server.rs?getLines(code, 'imports')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(tcpEchoServerCode, 'imports')}</CodeBlock>
 
 #### LocalSet Requirement for TCP Operations
 
-TCP operations in DFIR require the use of tokio's `LocalSet` for proper execution. `LocalSet` is a special execution context in tokio that allows tasks to run on a single thread, which is necessary for DFIR's internal connection management.
+TCP operations in DFIR require the use of tokio's `LocalSet` for specific parts of your application. You don't need to restructure your entire application around LocalSet - you can use it selectively for TCP operations.
 
 **What is LocalSet?**
 - LocalSet is a tokio utility that provides a single-threaded execution context for async tasks
 - Unlike regular tokio tasks that can run on any thread in the runtime's thread pool, LocalSet tasks are guaranteed to run on the same thread
-- This is required because DFIR's TCP implementation uses thread-local storage and spawns local tasks that cannot be moved between threads
+- This is required because DFIR's TCP implementation uses `spawn_local` internally
 
 **Why TCP needs LocalSet:**
 - DFIR's `bind_tcp_bytes`, `bind_tcp_lines`, and related TCP functions use `spawn_local` internally
 - `spawn_local` requires being called from within a LocalSet context
 - This design choice ensures proper connection state management and thread safety
 
-Here's how to use TCP with LocalSet:
+**Practical Usage Pattern:**
+You can use a regular `#[tokio::main]` and wrap only the TCP operations in LocalSet:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/tcp_echo_server.rs?getLines(code, 'bind_tcp')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(tcpEchoServerCode, 'bind_tcp')}</CodeBlock>
 
 The TCP server processes connection streams through DFIR:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/tcp_echo_server.rs?getLines(code, 'dfir_flow')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(tcpEchoServerCode, 'dfir_flow')}</CodeBlock>
+
+Finally, compile and run the DFIR graph within the LocalSet context:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(tcpEchoServerCode, 'run_server')}</CodeBlock>
 
 Key TCP characteristics:
 - **Connection-oriented**: Explicit connection establishment
@@ -104,55 +113,43 @@ Key TCP characteristics:
 
 HTTP builds on TCP to provide request-response semantics with rich metadata. DFIR's HTTP support includes request/response parsing and routing.
 
-**Note:** Like TCP operations, HTTP operations in DFIR also require `LocalSet` since they use the same underlying TCP infrastructure. All HTTP servers and clients must be run within a `LocalSet` context.
+**Note:** Like TCP operations, HTTP operations in DFIR also require `LocalSet` for the binding and execution phases since they use the underlying TCP infrastructure. You can use the same selective LocalSet pattern as with TCP.
 
 ### HTTP Server
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_server.rs?getLines(code, 'imports')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'imports')}</CodeBlock>
 
-HTTP servers bind to addresses and receive structured requests. Note the LocalSet wrapper required for HTTP operations:
+HTTP servers bind to addresses and receive structured requests. Use LocalSet for HTTP operations:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_server.rs?getLines(code, 'bind_server')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'bind_server')}</CodeBlock>
 
 HTTP request routing uses demux for efficient path-based dispatch:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_server.rs?getLines(code, 'route_handlers')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'route_handlers')}</CodeBlock>
 
 Response generation follows the same patterns:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_server.rs?getLines(code, 'response_union')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'response_union')}</CodeBlock>
+
+Finally, run the DFIR graph:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'run_server')}</CodeBlock>
 
 ### HTTP Client
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_client.rs?getLines(code, 'imports')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpClientCode, 'imports')}</CodeBlock>
 
-HTTP clients connect and send structured requests:
+HTTP clients connect and send structured requests. Like servers, clients also require LocalSet:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_client.rs?getLines(code, 'connect_client')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpClientCode, 'connect_client')}</CodeBlock>
 
 Client request processing:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_client.rs?getLines(code, 'send_requests')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpClientCode, 'send_requests')}</CodeBlock>
 
 Response handling with error processing:
 
-```rust
-!!raw-loader!../../../dfir_rs/examples/http_client.rs?getLines(code, 'response_processing')
-```
+<CodeBlock language="rust" showLineNumbers>{getLines(httpClientCode, 'response_processing')}</CodeBlock>
 
 Key HTTP characteristics:
 - **Request-response**: Structured message exchange
@@ -262,30 +259,32 @@ Understanding when LocalSet is required for DFIR networking:
 | **TCP** | ✅ Yes | Internal `spawn_local` usage for connection management |
 | **HTTP** | ✅ Yes | Built on TCP infrastructure, inherits LocalSet requirement |
 
-**When to use LocalSet:**
+**Selective LocalSet Usage Pattern:**
 ```rust
 use tokio::task::LocalSet;
 
 #[tokio::main]
 async fn main() {
-    let local = LocalSet::new();
+    // Regular application setup
+    let addr = "127.0.0.1:3000";
     
-    // TCP and HTTP operations must be spawned within LocalSet
-    local.spawn_local(async {
-        // Your DFIR TCP/HTTP code here
+    // Use LocalSet selectively for TCP/HTTP operations
+    LocalSet::new().run_until(async move {
+        // DFIR TCP/HTTP code that requires LocalSet
         let (sink, stream, addr) = dfir_rs::util::bind_tcp_lines(addr).await;
-        // ... rest of your DFIR graph
-    });
-    
-    // Run the LocalSet
-    local.await;
+        
+        // Your DFIR graph here
+        let df = flow.compile_and_run_async().await;
+        df.await;
+    }).await;
 }
 ```
 
 **Why this matters:**
-- Attempting to use TCP/HTTP operations outside LocalSet will panic at runtime
+- LocalSet is only needed for the specific operations that use TCP/HTTP binding and execution
+- You don't need to restructure your entire application around LocalSet
 - UDP operations work fine in regular tokio contexts
-- LocalSet ensures proper thread-local task execution required by DFIR's TCP implementation
+- TCP/HTTP operations will panic at runtime if not within LocalSet context
 
 ## Examples
 

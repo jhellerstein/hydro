@@ -1,6 +1,9 @@
+//[imports]//
 use std::net::SocketAddr;
 
 use dfir_rs::{dfir_syntax, var_args};
+use tokio::task::LocalSet;
+//[/imports]//
 
 /// Example HTTP server using DFIR
 ///
@@ -12,20 +15,25 @@ use dfir_rs::{dfir_syntax, var_args};
 /// Usage: cargo run --example http_server
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Bind HTTP server to localhost:3000
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let (response_send, request_recv, bound_addr) = dfir_rs::util::bind_http_server(addr).await;
+    //[bind_server]//
+    // HTTP operations require LocalSet - wrap TCP/HTTP operations in LocalSet
+    LocalSet::new().run_until(async {
+        // Bind HTTP server to localhost:3000
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        let (response_send, request_recv, bound_addr) = dfir_rs::util::bind_http_server(addr).await;
 
-    println!("🚀 HTTP Server listening on http://{}", bound_addr);
-    println!("📋 Try these endpoints:");
-    println!("   GET  http://{}/", bound_addr);
-    println!("   GET  http://{}/api/hello", bound_addr);
-    println!("   POST http://{}/api/echo (with JSON body)", bound_addr);
-    println!("   GET  http://{}/404 (will return 404)", bound_addr);
-    println!();
-    println!("Press Ctrl+C to stop the server.");
+        println!("🚀 HTTP Server listening on http://{}", bound_addr);
+        println!("📋 Try these endpoints:");
+        println!("   GET  http://{}/", bound_addr);
+        println!("   GET  http://{}/api/hello", bound_addr);
+        println!("   POST http://{}/api/echo (with JSON body)", bound_addr);
+        println!("   GET  http://{}/404 (will return 404)", bound_addr);
+        println!();
+        println!("Press Ctrl+C to stop the server.");
+        //[/bind_server]//
 
     let mut server = dfir_syntax! {
+        //[route_handlers]//
         // Stream of incoming HTTP requests - use demux for efficient routing
         requests = source_stream(request_recv)
             -> map(|result: Result<(dfir_rs::util::HttpRequest, SocketAddr), dfir_rs::util::HttpCodecError>| {
@@ -42,7 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => not_found.give((request, client_addr)),
                 }
             });
+        //[/route_handlers]//
 
+        //[response_union]//
         // Union all response streams together
         responses = union();
 
@@ -91,8 +101,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Send responses back to clients
         responses -> dest_sink(response_send);
+        //[/response_union]//
     };
 
+    //[run_server]//
     server.run_async().await.unwrap();
+    //[/run_server]//
+    }).await;
     Ok(())
 }
