@@ -12,6 +12,7 @@ fn test_dfir_http_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
     use crate::util::{HttpCodecError, collect_ready};
 
     // Create test requests to inject (simulating what would come from bind_http_server)
+    let post_request = HttpRequest::post_json("/api/data", &serde_json::json!({"key": "value"}))?;
     let test_requests = vec![
         Ok((
             HttpRequest::get("/"),
@@ -22,7 +23,7 @@ fn test_dfir_http_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
             "127.0.0.1:12346".parse::<SocketAddr>().unwrap(),
         )),
         Ok((
-            HttpRequest::post_json("/api/data", &serde_json::json!({"key": "value"}))?,
+            post_request,
             "127.0.0.1:12347".parse::<SocketAddr>().unwrap(),
         )),
     ];
