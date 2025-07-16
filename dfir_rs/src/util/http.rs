@@ -9,7 +9,7 @@
 //! ## Features
 //!
 //! - **HTTP/1.1 compliance**: Supports both Content-Length and Transfer-Encoding: chunked
-//! - **Multiple HTTP methods**: GET, POST, PUT, DELETE, HEAD, OPTIONS with convenience builders
+//! - **Multiple HTTP methods**: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS with convenience builders
 //! - **Query parameters**: Automatic parsing and URL encoding/decoding
 //! - **Cookie support**: Request cookie parsing and response Set-Cookie headers with full attribute support
 //! - **JSON support**: Easy JSON request/response handling with automatic headers
@@ -34,6 +34,13 @@
 //! if let Some(session_id) = request.get_cookie("session_id") {
 //!     println!("User session: {}", session_id);
 //! }
+//!
+//! // PATCH for partial updates
+//! let user_update = serde_json::json!({
+//!     "email": "new@example.com",
+//!     "preferences": {"theme": "dark"}
+//! });
+//! let patch_req = HttpRequest::patch_json("/api/users/123", &user_update).unwrap();
 //!
 //! // Setting cookies in responses
 //! let response = HttpResponse::ok()
@@ -485,6 +492,49 @@ impl HttpRequest {
             cookies: HashMap::new(),
             body,
         }
+    }
+
+    /// Create a PATCH request with arbitrary body.
+    pub fn patch(path: impl Into<String>, body: Vec<u8>) -> Self {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        let path_str = path.into();
+        let (clean_path, query_params) = Self::parse_query_params(&path_str);
+
+        Self {
+            method: "PATCH".to_string(),
+            path: clean_path,
+            version: "HTTP/1.1".to_string(),
+            headers,
+            query_params,
+            cookies: HashMap::new(),
+            body,
+        }
+    }
+
+    /// Create a PATCH request with JSON body.
+    pub fn patch_json(
+        path: impl Into<String>,
+        json: &impl Serialize,
+    ) -> Result<Self, serde_json::Error> {
+        let body = serde_json::to_vec(json)?;
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        let path_str = path.into();
+        let (clean_path, query_params) = Self::parse_query_params(&path_str);
+
+        Ok(Self {
+            method: "PATCH".to_string(),
+            path: clean_path,
+            version: "HTTP/1.1".to_string(),
+            headers,
+            query_params,
+            cookies: HashMap::new(),
+            body,
+        })
     }
 
     /// Create a DELETE request.
@@ -1383,6 +1433,10 @@ mod tests {
         let put_req = HttpRequest::put("/test", b"data".to_vec());
         assert_eq!(put_req.method, "PUT");
 
+        let patch_req = HttpRequest::patch("/test", b"patch_data".to_vec());
+        assert_eq!(patch_req.method, "PATCH");
+        assert_eq!(patch_req.body, b"patch_data");
+
         let delete_req = HttpRequest::delete("/test");
         assert_eq!(delete_req.method, "DELETE");
 
@@ -1720,6 +1774,16 @@ mod tests {
         );
         assert_eq!(req.body, "update data".as_bytes().to_vec());
 
+        // Test PATCH with query parameters
+        let req = HttpRequest::patch(
+            "/api/users/123?partial=true",
+            "patch data".as_bytes().to_vec(),
+        );
+        assert_eq!(req.method, "PATCH");
+        assert_eq!(req.path, "/api/users/123");
+        assert_eq!(req.query_params.get("partial"), Some(&"true".to_string()));
+        assert_eq!(req.body, "patch data".as_bytes().to_vec());
+
         // Test DELETE with query parameters
         let req = HttpRequest::delete("/api/users/123?cascade=true");
         assert_eq!(req.method, "DELETE");
@@ -1903,6 +1967,43 @@ mod tests {
         let service_unavailable_resp = HttpResponse::service_unavailable();
         assert_eq!(service_unavailable_resp.status_code, 503);
         assert_eq!(service_unavailable_resp.status_text, "Service Unavailable");
+    }
+
+    #[test]
+    fn test_patch_json_functionality() -> Result<(), Box<dyn std::error::Error>> {
+        // Test PATCH with JSON body
+        let patch_data = serde_json::json!({
+            "email": "newemail@example.com",
+            "preferences": {
+                "theme": "dark",
+                "notifications": true
+            }
+        });
+
+        let req = HttpRequest::patch_json("/api/users/123", &patch_data)?;
+        assert_eq!(req.method, "PATCH");
+        assert_eq!(req.path, "/api/users/123");
+        assert_eq!(
+            req.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
+        assert_eq!(
+            req.headers.get("Content-Length"),
+            Some(&req.body.len().to_string())
+        );
+
+        // Verify the JSON body
+        let parsed_body: serde_json::Value = serde_json::from_slice(&req.body)?;
+        assert_eq!(parsed_body["email"], "newemail@example.com");
+        assert_eq!(parsed_body["preferences"]["theme"], "dark");
+        assert_eq!(parsed_body["preferences"]["notifications"], true);
+
+        // Test PATCH JSON with query parameters
+        let req = HttpRequest::patch_json("/api/users/123?validate=true", &patch_data)?;
+        assert_eq!(req.path, "/api/users/123");
+        assert_eq!(req.query_params.get("validate"), Some(&"true".to_string()));
+
+        Ok(())
     }
 
     #[test]
