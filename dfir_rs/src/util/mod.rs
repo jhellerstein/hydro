@@ -26,7 +26,11 @@ pub use tcp::*;
 
 mod http;
 #[cfg(not(target_arch = "wasm32"))]
-pub use http::*;
+pub use http::{HttpRequest, HttpResponse, HttpCodecError, HttpCodec, HttpClientCodec, HttpServerCodec};
+
+mod websocket;
+#[cfg(not(target_arch = "wasm32"))]
+pub use websocket::{WebSocketMessage, WebSocketFrame, WebSocketOpcode, WebSocketError, WebSocketCloseCode, WebSocketCodec, WebSocketServerCodec, WebSocketClientCodec, WebSocketHandshake, HandshakeRequest, HandshakeResponse, WebSocketConnection, ConnectionState};
 
 #[cfg(unix)]
 mod socket;
@@ -258,6 +262,31 @@ pub async fn bind_http_server(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn connect_http_client() -> (TcpFramedSink<HttpRequest>, TcpFramedStream<HttpClientCodec>) {
     connect_tcp(HttpClientCodec::new())
+}
+
+/// Returns a WebSocket server that can receive WebSocket messages and send back WebSocket messages.
+///
+/// The input `addr` may have a port of `0`, the returned `SocketAddr` will be the address of the newly bound endpoint.
+/// When a `(WebSocketMessage, SocketAddr)` pair is fed to the `Sender`, the message will be sent back to the client
+/// that made the corresponding connection from that address.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn bind_websocket_server(
+    addr: SocketAddr,
+) -> (
+    unsync::mpsc::Sender<(WebSocketMessage, SocketAddr)>,
+    unsync::mpsc::Receiver<Result<(WebSocketMessage, SocketAddr), WebSocketError>>,
+    SocketAddr,
+) {
+    bind_tcp(addr, WebSocketServerCodec::new()).await.unwrap()
+}
+
+/// Returns a WebSocket client that can send WebSocket messages and receive WebSocket messages.
+///
+/// `(WebSocketMessage, SocketAddr)` pairs fed to the returned `Sender` will initiate WebSocket connections to the specified `SocketAddr`.
+/// These connections will be cached and reused. When the server sends a message back it will be available via the returned `Receiver`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn connect_websocket_client() -> (TcpFramedSink<WebSocketMessage>, TcpFramedStream<WebSocketClientCodec>) {
+    connect_tcp(WebSocketClientCodec::new())
 }
 
 /// Sort a slice using a key fn which returns references.
