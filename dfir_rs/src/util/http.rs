@@ -146,6 +146,67 @@ impl HttpRequest {
         })
     }
 
+    /// Create a POST request with arbitrary body.
+    pub fn post(path: impl Into<String>, body: Vec<u8>) -> Self {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        Self {
+            method: "POST".to_string(),
+            path: path.into(),
+            version: "HTTP/1.1".to_string(),
+            headers,
+            body,
+        }
+    }
+
+    /// Create a PUT request.
+    pub fn put(path: impl Into<String>, body: Vec<u8>) -> Self {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        Self {
+            method: "PUT".to_string(),
+            path: path.into(),
+            version: "HTTP/1.1".to_string(),
+            headers,
+            body,
+        }
+    }
+
+    /// Create a DELETE request.
+    pub fn delete(path: impl Into<String>) -> Self {
+        Self {
+            method: "DELETE".to_string(),
+            path: path.into(),
+            version: "HTTP/1.1".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create a HEAD request.
+    pub fn head(path: impl Into<String>) -> Self {
+        Self {
+            method: "HEAD".to_string(),
+            path: path.into(),
+            version: "HTTP/1.1".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
+    /// Create an OPTIONS request.
+    pub fn options(path: impl Into<String>) -> Self {
+        Self {
+            method: "OPTIONS".to_string(),
+            path: path.into(),
+            version: "HTTP/1.1".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+
     /// Add a header to the request.
     pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.headers.insert(name.into(), value.into());
@@ -255,29 +316,45 @@ impl HttpCodec {
                     .ok_or(HttpCodecError::InvalidRequest)?
                     .to_string();
                 let path = req.path.ok_or(HttpCodecError::InvalidRequest)?.to_string();
-                let version = format!(
-                    "HTTP/{}.{}",
-                    req.version.unwrap_or(1),
-                    req.version.unwrap_or(1)
-                );
+                let version = match req.version {
+                    Some(v) => format!("HTTP/{}.{}", v, if v == 0 { 9 } else { if v == 1 { 1 } else { 0 } }),
+                    None => "HTTP/1.1".to_string(), // Default to HTTP/1.1
+                };
 
                 let mut headers_map = HashMap::new();
                 let mut content_length = 0;
+                let mut is_chunked = false;
 
                 for header in req.headers {
-                    let name = header.name.to_string();
+                    let name = header.name.to_lowercase(); // HTTP headers are case-insensitive
                     let value = String::from_utf8_lossy(header.value).to_string();
 
-                    if name.to_lowercase() == "content-length" {
-                        content_length = value
-                            .parse()
-                            .map_err(|_| HttpCodecError::InvalidContentLength)?;
-                        if content_length > self.max_body_size {
-                            return Err(HttpCodecError::BodyTooLarge);
-                        }
+                    match name.as_str() {
+                        "content-length" => {
+                            content_length = value
+                                .parse()
+                                .map_err(|_| HttpCodecError::InvalidContentLength)?;
+                            if content_length > self.max_body_size {
+                                return Err(HttpCodecError::BodyTooLarge);
+                            }
+                        },
+                        "transfer-encoding" => {
+                            if value.to_lowercase().contains("chunked") {
+                                is_chunked = true;
+                            }
+                        },
+                        _ => {}
                     }
 
-                    headers_map.insert(name, value);
+                    // Store original case for the header name from the request
+                    headers_map.insert(header.name.to_string(), value);
+                }
+
+                // Handle chunked encoding vs content-length
+                if is_chunked {
+                    // For chunked encoding, we'd need to parse chunks
+                    // For now, return an error as chunked encoding is not yet supported
+                    return Err(HttpCodecError::UnsupportedEncoding);
                 }
 
                 let total_len = header_len + content_length;
@@ -367,6 +444,8 @@ pub enum HttpCodecError {
     HeadersTooLarge,
     /// HTTP body too large
     BodyTooLarge,
+    /// Unsupported encoding (e.g., chunked transfer encoding)
+    UnsupportedEncoding,
     /// I/O error
     Io(String),
 }
@@ -379,6 +458,7 @@ impl fmt::Display for HttpCodecError {
             HttpCodecError::InvalidContentLength => write!(f, "Invalid Content-Length header"),
             HttpCodecError::HeadersTooLarge => write!(f, "HTTP headers too large"),
             HttpCodecError::BodyTooLarge => write!(f, "HTTP body too large"),
+            HttpCodecError::UnsupportedEncoding => write!(f, "Unsupported HTTP encoding"),
             HttpCodecError::Io(msg) => write!(f, "I/O error: {}", msg),
         }
     }
@@ -563,6 +643,29 @@ mod tests {
         assert_eq!(req.path, "/test");
         assert_eq!(req.version, "HTTP/1.1");
         assert!(req.body.is_empty());
+    }
+
+    #[test]
+    fn test_http_methods() {
+        // Test all HTTP methods
+        let get_req = HttpRequest::get("/test");
+        assert_eq!(get_req.method, "GET");
+
+        let post_req = HttpRequest::post("/test", b"data".to_vec());
+        assert_eq!(post_req.method, "POST");
+        assert_eq!(post_req.body, b"data");
+
+        let put_req = HttpRequest::put("/test", b"data".to_vec());
+        assert_eq!(put_req.method, "PUT");
+
+        let delete_req = HttpRequest::delete("/test");
+        assert_eq!(delete_req.method, "DELETE");
+
+        let head_req = HttpRequest::head("/test");
+        assert_eq!(head_req.method, "HEAD");
+
+        let options_req = HttpRequest::options("/test");
+        assert_eq!(options_req.method, "OPTIONS");
     }
 
     #[test]
