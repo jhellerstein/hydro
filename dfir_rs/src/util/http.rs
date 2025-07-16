@@ -10,9 +10,43 @@
 //!
 //! - **HTTP/1.1 compliance**: Supports both Content-Length and Transfer-Encoding: chunked
 //! - **Multiple HTTP methods**: GET, POST, PUT, DELETE, HEAD, OPTIONS with convenience builders
+//! - **Query parameters**: Automatic parsing and URL encoding/decoding
+//! - **Cookie support**: Request cookie parsing and response Set-Cookie headers with full attribute support
 //! - **JSON support**: Easy JSON request/response handling with automatic headers
+//! - **Status code helpers**: Comprehensive set of status code constructors (2xx, 3xx, 4xx, 5xx)
 //! - **Error handling**: Comprehensive error types for different failure modes
 //! - **Streaming**: Works with DFIR's streaming model for real-time HTTP processing
+//!
+//! ## Cookie Support
+//!
+//! The HTTP module provides comprehensive cookie support:
+//!
+//! - **Request cookies**: Automatically parsed from `Cookie` headers into `request.cookies` HashMap
+//! - **Response cookies**: Set via `with_cookie()` or `with_simple_cookie()` methods
+//! - **Cookie attributes**: Domain, Path, Max-Age, Expires, Secure, HttpOnly, SameSite
+//! - **Authentication patterns**: Cookie-based session management and user preferences
+//!
+//! ```rust,no_run
+//! use dfir_rs::util::{Cookie, HttpRequest, HttpResponse, SameSite};
+//!
+//! // Reading cookies from requests
+//! let request = HttpRequest::get("/dashboard");
+//! if let Some(session_id) = request.get_cookie("session_id") {
+//!     println!("User session: {}", session_id);
+//! }
+//!
+//! // Setting cookies in responses
+//! let response = HttpResponse::ok()
+//!     .with_simple_cookie("session_id", "abc123")
+//!     .with_cookie(
+//!         Cookie::new("auth_token", "xyz789")
+//!             .with_domain("example.com")
+//!             .with_path("/app")
+//!             .secure()
+//!             .http_only()
+//!             .with_same_site(SameSite::Strict),
+//!     );
+//! ```
 //!
 //! # Basic Usage
 //!
@@ -113,6 +147,40 @@ use bytes::{Buf, BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder};
 
+/// Represents an HTTP cookie with its attributes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cookie {
+    /// Cookie name
+    pub name: String,
+    /// Cookie value
+    pub value: String,
+    /// Domain attribute (optional)
+    pub domain: Option<String>,
+    /// Path attribute (optional)
+    pub path: Option<String>,
+    /// Max-Age attribute in seconds (optional)
+    pub max_age: Option<i64>,
+    /// Expires attribute (optional, as HTTP date string)
+    pub expires: Option<String>,
+    /// Secure flag
+    pub secure: bool,
+    /// HttpOnly flag
+    pub http_only: bool,
+    /// SameSite attribute
+    pub same_site: Option<SameSite>,
+}
+
+/// SameSite cookie attribute values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SameSite {
+    /// Strict SameSite policy
+    Strict,
+    /// Lax SameSite policy
+    Lax,
+    /// None SameSite policy (requires Secure)
+    None,
+}
+
 /// A simple HTTP request representation for DFIR.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpRequest {
@@ -126,6 +194,8 @@ pub struct HttpRequest {
     pub headers: HashMap<String, String>,
     /// Query parameters parsed from the URL
     pub query_params: HashMap<String, String>,
+    /// Cookies parsed from the Cookie header
+    pub cookies: HashMap<String, String>,
     /// Request body (empty for methods like GET)
     pub body: Vec<u8>,
 }
@@ -141,8 +211,132 @@ pub struct HttpResponse {
     pub status_text: String,
     /// Response headers
     pub headers: HashMap<String, String>,
+    /// Cookies to be set in the response
+    pub set_cookies: Vec<Cookie>,
     /// Response body
     pub body: Vec<u8>,
+}
+
+impl Cookie {
+    /// Create a new cookie with name and value.
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            domain: None,
+            path: None,
+            max_age: None,
+            expires: None,
+            secure: false,
+            http_only: false,
+            same_site: None,
+        }
+    }
+
+    /// Set the domain attribute.
+    pub fn with_domain(mut self, domain: impl Into<String>) -> Self {
+        self.domain = Some(domain.into());
+        self
+    }
+
+    /// Set the path attribute.
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    /// Set the max-age attribute (in seconds).
+    pub fn with_max_age(mut self, max_age: i64) -> Self {
+        self.max_age = Some(max_age);
+        self
+    }
+
+    /// Set the expires attribute (HTTP date string).
+    pub fn with_expires(mut self, expires: impl Into<String>) -> Self {
+        self.expires = Some(expires.into());
+        self
+    }
+
+    /// Mark the cookie as secure.
+    pub fn secure(mut self) -> Self {
+        self.secure = true;
+        self
+    }
+
+    /// Mark the cookie as HTTP-only.
+    pub fn http_only(mut self) -> Self {
+        self.http_only = true;
+        self
+    }
+
+    /// Set the SameSite attribute.
+    pub fn with_same_site(mut self, same_site: SameSite) -> Self {
+        self.same_site = Some(same_site);
+        self
+    }
+
+    /// Parse cookies from a Cookie header value.
+    /// Returns a HashMap of cookie name to value.
+    pub fn parse_cookie_header(header_value: &str) -> HashMap<String, String> {
+        let mut cookies = HashMap::new();
+
+        for cookie_pair in header_value.split(';') {
+            let cookie_pair = cookie_pair.trim();
+            if let Some(eq_pos) = cookie_pair.find('=') {
+                let (name, value) = cookie_pair.split_at(eq_pos);
+                let value = &value[1..]; // Skip the '=' character
+
+                let name = name.trim();
+                let value = value.trim();
+
+                if !name.is_empty() {
+                    cookies.insert(name.to_string(), value.to_string());
+                }
+            }
+        }
+
+        cookies
+    }
+
+    /// Format this cookie for use in a Set-Cookie header.
+    pub fn to_set_cookie_header(&self) -> String {
+        let mut header = format!("{}={}", self.name, self.value);
+
+        if let Some(ref domain) = self.domain {
+            header.push_str(&format!("; Domain={}", domain));
+        }
+
+        if let Some(ref path) = self.path {
+            header.push_str(&format!("; Path={}", path));
+        }
+
+        if let Some(max_age) = self.max_age {
+            header.push_str(&format!("; Max-Age={}", max_age));
+        }
+
+        if let Some(ref expires) = self.expires {
+            header.push_str(&format!("; Expires={}", expires));
+        }
+
+        if self.secure {
+            header.push_str("; Secure");
+        }
+
+        if self.http_only {
+            header.push_str("; HttpOnly");
+        }
+
+        if let Some(ref same_site) = self.same_site {
+            let same_site_str = match same_site {
+                SameSite::Strict => "Strict",
+                SameSite::Lax => "Lax",
+                SameSite::None => "None",
+            };
+            header.push_str(&format!("; SameSite={}", same_site_str));
+        }
+
+        header
+    }
 }
 
 impl HttpRequest {
@@ -226,6 +420,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers: HashMap::new(),
             query_params,
+            cookies: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -249,6 +444,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers,
             query_params,
+            cookies: HashMap::new(),
             body,
         })
     }
@@ -267,6 +463,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers,
             query_params,
+            cookies: HashMap::new(),
             body,
         }
     }
@@ -285,6 +482,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers,
             query_params,
+            cookies: HashMap::new(),
             body,
         }
     }
@@ -300,6 +498,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers: HashMap::new(),
             query_params,
+            cookies: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -315,6 +514,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers: HashMap::new(),
             query_params,
+            cookies: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -330,6 +530,7 @@ impl HttpRequest {
             version: "HTTP/1.1".to_string(),
             headers: HashMap::new(),
             query_params,
+            cookies: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -376,6 +577,16 @@ impl HttpRequest {
         }
     }
 
+    /// Get a cookie value by name.
+    pub fn get_cookie(&self, name: &str) -> Option<&String> {
+        self.cookies.get(name)
+    }
+
+    /// Check if a cookie exists.
+    pub fn has_cookie(&self, name: &str) -> bool {
+        self.cookies.contains_key(name)
+    }
+
     /// Simple URL encoding for query parameters
     fn url_encode(s: &str) -> String {
         let mut encoded = String::new();
@@ -403,6 +614,7 @@ impl HttpResponse {
             status_code: 200,
             status_text: "OK".to_string(),
             headers: HashMap::new(),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -419,6 +631,7 @@ impl HttpResponse {
             status_code: 200,
             status_text: "OK".to_string(),
             headers,
+            set_cookies: Vec::new(),
             body,
         })
     }
@@ -430,6 +643,7 @@ impl HttpResponse {
             status_code,
             status_text: status_text.into(),
             headers: HashMap::new(),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -446,6 +660,7 @@ impl HttpResponse {
             status_code: 201,
             status_text: "Created".to_string(),
             headers: HashMap::new(),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -457,6 +672,7 @@ impl HttpResponse {
             status_code: 204,
             status_text: "No Content".to_string(),
             headers: HashMap::new(),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -513,6 +729,7 @@ impl HttpResponse {
             status_code: 301,
             status_text: "Moved Permanently".to_string(),
             headers: HashMap::from([("Location".to_string(), location.into())]),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -524,6 +741,7 @@ impl HttpResponse {
             status_code: 302,
             status_text: "Found".to_string(),
             headers: HashMap::from([("Location".to_string(), location.into())]),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -535,6 +753,7 @@ impl HttpResponse {
             status_code: 304,
             status_text: "Not Modified".to_string(),
             headers: HashMap::new(),
+            set_cookies: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -561,6 +780,17 @@ impl HttpResponse {
         self.headers.remove("Content-Length"); // Remove conflicting header
         self.body = body;
         self
+    }
+
+    /// Add a cookie to be set in the response.
+    pub fn with_cookie(mut self, cookie: Cookie) -> Self {
+        self.set_cookies.push(cookie);
+        self
+    }
+
+    /// Add a simple cookie with name and value.
+    pub fn with_simple_cookie(self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.with_cookie(Cookie::new(name, value))
     }
 }
 
@@ -739,12 +969,20 @@ impl HttpCodec {
                 // Parse query parameters from the path
                 let (clean_path, query_params) = HttpRequest::parse_query_params(&path);
 
+                // Parse cookies from the Cookie header
+                let cookies = headers_map
+                    .get("cookie")
+                    .or_else(|| headers_map.get("Cookie")) // Try both cases
+                    .map(|cookie_header| Cookie::parse_cookie_header(cookie_header))
+                    .unwrap_or_else(HashMap::new);
+
                 Ok(Some(HttpRequest {
                     method,
                     path: clean_path,
                     version,
                     headers: headers_map,
                     query_params,
+                    cookies,
                     body,
                 }))
             }
@@ -824,6 +1062,7 @@ impl HttpCodec {
                     status_code,
                     status_text,
                     headers: headers_map,
+                    set_cookies: Vec::new(), /* Set-Cookie headers would be parsed separately if needed */
                     body,
                 }))
             }
@@ -976,6 +1215,12 @@ impl Encoder<HttpResponse> for HttpServerCodec {
         for (name, value) in &item.headers {
             let header_line = format!("{}: {}\r\n", name, value);
             dst.put(header_line.as_bytes());
+        }
+
+        // Set-Cookie headers
+        for cookie in &item.set_cookies {
+            let set_cookie_line = format!("Set-Cookie: {}\r\n", cookie.to_set_cookie_header());
+            dst.put(set_cookie_line.as_bytes());
         }
 
         // End of headers
@@ -1701,5 +1946,306 @@ mod tests {
             created_resource.headers.get("Location"),
             Some(&"/api/users/123".to_string())
         );
+    }
+
+    #[test]
+    fn test_cookie_creation_and_attributes() {
+        // Test basic cookie creation
+        let cookie = Cookie::new("session_id", "abc123");
+        assert_eq!(cookie.name, "session_id");
+        assert_eq!(cookie.value, "abc123");
+        assert!(!cookie.secure);
+        assert!(!cookie.http_only);
+        assert_eq!(cookie.domain, None);
+
+        // Test cookie with all attributes
+        let cookie = Cookie::new("auth_token", "xyz789")
+            .with_domain("example.com")
+            .with_path("/app")
+            .with_max_age(3600)
+            .with_expires("Wed, 21 Oct 2025 07:28:00 GMT")
+            .secure()
+            .http_only()
+            .with_same_site(SameSite::Strict);
+
+        assert_eq!(cookie.domain, Some("example.com".to_string()));
+        assert_eq!(cookie.path, Some("/app".to_string()));
+        assert_eq!(cookie.max_age, Some(3600));
+        assert_eq!(
+            cookie.expires,
+            Some("Wed, 21 Oct 2025 07:28:00 GMT".to_string())
+        );
+        assert!(cookie.secure);
+        assert!(cookie.http_only);
+        assert_eq!(cookie.same_site, Some(SameSite::Strict));
+    }
+
+    #[test]
+    fn test_cookie_header_parsing() {
+        // Test parsing single cookie
+        let header = "session_id=abc123";
+        let cookies = Cookie::parse_cookie_header(header);
+        assert_eq!(cookies.get("session_id"), Some(&"abc123".to_string()));
+
+        // Test parsing multiple cookies
+        let header = "session_id=abc123; user_pref=dark_mode; cart_items=3";
+        let cookies = Cookie::parse_cookie_header(header);
+        assert_eq!(cookies.get("session_id"), Some(&"abc123".to_string()));
+        assert_eq!(cookies.get("user_pref"), Some(&"dark_mode".to_string()));
+        assert_eq!(cookies.get("cart_items"), Some(&"3".to_string()));
+
+        // Test parsing with spaces and edge cases
+        let header = " session_id = abc123 ; user_pref=dark_mode; empty=; name_only";
+        let cookies = Cookie::parse_cookie_header(header);
+        assert_eq!(cookies.get("session_id"), Some(&"abc123".to_string()));
+        assert_eq!(cookies.get("user_pref"), Some(&"dark_mode".to_string()));
+        assert_eq!(cookies.get("empty"), Some(&"".to_string()));
+        // name_only without = should be ignored
+        assert!(!cookies.contains_key("name_only"));
+
+        // Test empty header
+        let cookies = Cookie::parse_cookie_header("");
+        assert!(cookies.is_empty());
+    }
+
+    #[test]
+    fn test_cookie_set_cookie_header_generation() {
+        // Test basic cookie
+        let cookie = Cookie::new("session_id", "abc123");
+        assert_eq!(cookie.to_set_cookie_header(), "session_id=abc123");
+
+        // Test cookie with domain and path
+        let cookie = Cookie::new("auth_token", "xyz789")
+            .with_domain("example.com")
+            .with_path("/app");
+        assert_eq!(
+            cookie.to_set_cookie_header(),
+            "auth_token=xyz789; Domain=example.com; Path=/app"
+        );
+
+        // Test cookie with all attributes
+        let cookie = Cookie::new("secure_token", "secure123")
+            .with_domain(".example.com")
+            .with_path("/")
+            .with_max_age(86400)
+            .with_expires("Thu, 01 Jan 1970 00:00:01 GMT")
+            .secure()
+            .http_only()
+            .with_same_site(SameSite::Lax);
+
+        let header = cookie.to_set_cookie_header();
+        assert!(header.contains("secure_token=secure123"));
+        assert!(header.contains("Domain=.example.com"));
+        assert!(header.contains("Path=/"));
+        assert!(header.contains("Max-Age=86400"));
+        assert!(header.contains("Expires=Thu, 01 Jan 1970 00:00:01 GMT"));
+        assert!(header.contains("Secure"));
+        assert!(header.contains("HttpOnly"));
+        assert!(header.contains("SameSite=Lax"));
+
+        // Test SameSite variants
+        let strict_cookie = Cookie::new("test", "value").with_same_site(SameSite::Strict);
+        assert!(
+            strict_cookie
+                .to_set_cookie_header()
+                .contains("SameSite=Strict")
+        );
+
+        let none_cookie = Cookie::new("test", "value").with_same_site(SameSite::None);
+        assert!(none_cookie.to_set_cookie_header().contains("SameSite=None"));
+    }
+
+    #[test]
+    fn test_http_request_cookie_methods() {
+        // Create request with cookies via constructor (simulating parsed request)
+        let mut req = HttpRequest::get("/test");
+        req.cookies
+            .insert("session_id".to_string(), "abc123".to_string());
+        req.cookies
+            .insert("user_pref".to_string(), "dark_mode".to_string());
+
+        // Test cookie accessor methods
+        assert_eq!(req.get_cookie("session_id"), Some(&"abc123".to_string()));
+        assert_eq!(req.get_cookie("user_pref"), Some(&"dark_mode".to_string()));
+        assert_eq!(req.get_cookie("missing"), None);
+
+        assert!(req.has_cookie("session_id"));
+        assert!(req.has_cookie("user_pref"));
+        assert!(!req.has_cookie("missing"));
+    }
+
+    #[test]
+    fn test_http_response_cookie_methods() {
+        // Test adding simple cookies
+        let resp = HttpResponse::ok()
+            .with_simple_cookie("session_id", "abc123")
+            .with_simple_cookie("user_pref", "dark_mode");
+
+        assert_eq!(resp.set_cookies.len(), 2);
+        assert_eq!(resp.set_cookies[0].name, "session_id");
+        assert_eq!(resp.set_cookies[0].value, "abc123");
+        assert_eq!(resp.set_cookies[1].name, "user_pref");
+        assert_eq!(resp.set_cookies[1].value, "dark_mode");
+
+        // Test adding complex cookie
+        let complex_cookie = Cookie::new("auth_token", "xyz789")
+            .with_domain("example.com")
+            .secure()
+            .http_only();
+
+        let resp = HttpResponse::ok().with_cookie(complex_cookie);
+        assert_eq!(resp.set_cookies.len(), 1);
+        assert_eq!(resp.set_cookies[0].name, "auth_token");
+        assert_eq!(resp.set_cookies[0].domain, Some("example.com".to_string()));
+        assert!(resp.set_cookies[0].secure);
+        assert!(resp.set_cookies[0].http_only);
+    }
+
+    #[test]
+    fn test_cookie_codec_integration() -> Result<(), Box<dyn std::error::Error>> {
+        use tokio_util::codec::{Decoder, Encoder};
+
+        // Test request with cookies
+        let mut server_codec = HttpServerCodec::new();
+
+        // Simulate an HTTP request with cookies
+        let request_with_cookies = b"GET /test HTTP/1.1\r\nHost: example.com\r\nCookie: session_id=abc123; user_pref=dark_mode\r\n\r\n";
+        let mut buf = BytesMut::from(&request_with_cookies[..]);
+
+        let request = server_codec
+            .decode(&mut buf)?
+            .expect("Should decode request");
+        assert_eq!(request.path, "/test");
+        assert_eq!(
+            request.get_cookie("session_id"),
+            Some(&"abc123".to_string())
+        );
+        assert_eq!(
+            request.get_cookie("user_pref"),
+            Some(&"dark_mode".to_string())
+        );
+
+        // Test response with Set-Cookie headers
+        let response = HttpResponse::ok()
+            .with_simple_cookie("new_session", "def456")
+            .with_cookie(Cookie::new("secure_token", "ghi789").secure().http_only())
+            .with_body(b"Success".to_vec());
+
+        let mut encoded_resp = BytesMut::new();
+        server_codec.encode(response, &mut encoded_resp)?;
+
+        let encoded_str = String::from_utf8_lossy(&encoded_resp);
+        assert!(encoded_str.contains("Set-Cookie: new_session=def456\r\n"));
+        assert!(encoded_str.contains("Set-Cookie: secure_token=ghi789; Secure; HttpOnly\r\n"));
+        assert!(encoded_str.contains("Success"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_dfir_cookie_processing_pattern() -> Result<(), Box<dyn std::error::Error>> {
+        use std::net::SocketAddr;
+
+        use crate::dfir_syntax;
+        use crate::util::collect_ready;
+
+        // Create test requests with cookies
+        let test_requests = vec![
+            Ok((
+                {
+                    let mut req = HttpRequest::get("/login");
+                    req.cookies
+                        .insert("session_id".to_string(), "expired123".to_string());
+                    req
+                },
+                "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            )),
+            Ok((
+                {
+                    let mut req = HttpRequest::post("/api/data", b"test".to_vec());
+                    req.cookies
+                        .insert("auth_token".to_string(), "valid456".to_string());
+                    req.cookies
+                        .insert("user_pref".to_string(), "dark_mode".to_string());
+                    req
+                },
+                "127.0.0.1:12346".parse::<SocketAddr>().unwrap(),
+            )),
+        ];
+
+        let (test_response_send, test_response_recv) =
+            tokio::sync::mpsc::unbounded_channel::<(HttpResponse, SocketAddr)>();
+
+        let mut dfir_flow = dfir_syntax! {
+            source_iter(test_requests)
+                -> map(|result: Result<(HttpRequest, SocketAddr), HttpCodecError>| {
+                    let (request, client_addr) = result.unwrap();
+
+                    // Cookie-based routing and authentication
+                    let response = match request.path.as_str() {
+                        "/login" => {
+                            if request.has_cookie("session_id") {
+                                // Session exists, refresh it
+                                HttpResponse::ok()
+                                    .with_simple_cookie("session_id", "new789")
+                                    .with_cookie(Cookie::new("csrf_token", "csrf123").secure().http_only())
+                                    .with_body(b"Session refreshed".to_vec())
+                            } else {
+                                // No session, create new one
+                                HttpResponse::ok()
+                                    .with_simple_cookie("session_id", "first123")
+                                    .with_body(b"New session created".to_vec())
+                            }
+                        }
+                        "/api/data" => {
+                            if request.get_cookie("auth_token") == Some(&"valid456".to_string()) {
+                                let user_pref = request.get_cookie("user_pref")
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("light_mode");
+                                HttpResponse::json(&serde_json::json!({
+                                    "data": "secure data",
+                                    "theme": user_pref
+                                })).unwrap()
+                            } else {
+                                HttpResponse::unauthorized()
+                                    .with_body(b"Invalid authentication".to_vec())
+                            }
+                        }
+                        _ => HttpResponse::not_found()
+                    };
+
+                    (response, client_addr)
+                })
+                -> for_each(|(response, addr)| test_response_send.send((response, addr)).unwrap());
+        };
+
+        dfir_flow.run_available();
+
+        let responses: Vec<(HttpResponse, SocketAddr)> = collect_ready(
+            tokio_stream::wrappers::UnboundedReceiverStream::new(test_response_recv),
+        );
+
+        assert_eq!(responses.len(), 2);
+
+        // Check login response (session refresh)
+        assert_eq!(responses[0].0.status_code, 200);
+        assert_eq!(responses[0].0.body, b"Session refreshed");
+        assert_eq!(responses[0].0.set_cookies.len(), 2);
+        assert_eq!(responses[0].0.set_cookies[0].name, "session_id");
+        assert_eq!(responses[0].0.set_cookies[0].value, "new789");
+        assert_eq!(responses[0].0.set_cookies[1].name, "csrf_token");
+        assert!(responses[0].0.set_cookies[1].secure);
+        assert!(responses[0].0.set_cookies[1].http_only);
+
+        // Check API response (authenticated with preferences)
+        assert_eq!(responses[1].0.status_code, 200);
+        let json_body: serde_json::Value = serde_json::from_slice(&responses[1].0.body)?;
+        assert_eq!(json_body["data"], "secure data");
+        assert_eq!(json_body["theme"], "dark_mode");
+
+        println!("✅ Cookie support working correctly through DFIR pipeline!");
+        println!("✅ Supports: cookie parsing, authentication, session management, preferences");
+
+        Ok(())
     }
 }
