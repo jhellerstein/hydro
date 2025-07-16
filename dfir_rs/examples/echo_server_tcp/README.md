@@ -2,7 +2,7 @@ Simple TCP echo server example.
 
 To run the example:
 ```
-cargo run -p dfir_rs --example tcp_echo_server
+cargo run -p dfir_rs --example echo_server_tcp
 ```
 
 The server will start listening on `localhost:3001`. You can test it using telnet or netcat:

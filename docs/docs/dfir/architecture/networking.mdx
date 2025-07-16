@@ -3,7 +3,7 @@ sidebar_position: 3
 ---
 import CodeBlock from '@theme/CodeBlock';
 import echoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server/server.rs';
-import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/tcp_echo_server/main.rs';
+import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server_tcp/main.rs';
 import httpServerCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/server.rs';
 import httpClientCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/client.rs';
 import { getLines } from '../../../src/util';
@@ -202,15 +202,6 @@ DFIR networking operators always include address information:
 
 ## Advanced Patterns
 
-### Protocol Composition
-
-DFIR's uniform stream model enables protocol composition:
-
-```rust
-// HTTP over UDP tunnel
-udp_stream -> map(parse_http) -> demux(route_requests) -> map(generate_response) -> udp_sink
-```
-
 ### Multi-protocol Servers
 
 Single DFIR graphs can handle multiple protocols:
@@ -225,9 +216,20 @@ dfir_syntax! {
 }
 ```
 
+### Protocol Composition
+
+DFIR's uniform stream model also enables protocol composition:
+
+```rust
+// HTTP over UDP tunnel
+udp_stream -> map(parse_http) -> demux(route_requests) -> map(generate_response) -> udp_sink
+```
+
+
 ### Load Balancing
 
-DFIR's demux operator enables sophisticated routing:
+DFIR's demux operator easily enables writing simple load balancers
+based on hashing or the like.
 
 ```rust
 // Route by client address
@@ -239,6 +241,8 @@ requests -> demux(|(req, addr), var_args!(server1, server2, server3)| {
     }
 });
 ```
+More complex load balancing would be achieved by computing, say,
+runtime statistics, and `match`ing on those as in the pattern above.
 
 ## Best Practices
 
@@ -259,23 +263,27 @@ Understanding when LocalSet is required for DFIR networking:
 | **TCP** | ✅ Yes | Internal `spawn_local` usage for connection management |
 | **HTTP** | ✅ Yes | Built on TCP infrastructure, inherits LocalSet requirement |
 
-**Selective LocalSet Usage Pattern:**
+**Canonical LocalSet Usage Pattern:**
 ```rust
 use tokio::task::LocalSet;
 
 #[tokio::main]
 async fn main() {
-    // Regular application setup
     let addr = "127.0.0.1:3000";
     
-    // Use LocalSet selectively for TCP/HTTP operations
+    // Step 1: LocalSet-wrapped binding
+    let (sink, stream, addr) = LocalSet::new().run_until(async move {
+        dfir_rs::util::bind_tcp_lines(addr).await
+    }).await;
+    
+    // Step 2: DFIR graph definition (outside LocalSet)
+    let mut flow = dfir_syntax! {
+        source_stream(stream) -> dest_sink(sink);
+    };
+    
+    // Step 3: LocalSet-wrapped execution
     LocalSet::new().run_until(async move {
-        // DFIR TCP/HTTP code that requires LocalSet
-        let (sink, stream, addr) = dfir_rs::util::bind_tcp_lines(addr).await;
-        
-        // Your DFIR graph here
-        let df = flow.compile_and_run_async().await;
-        df.await;
+        flow.run_async().await
     }).await;
 }
 ```
@@ -290,7 +298,7 @@ async fn main() {
 
 For complete working examples, see:
 - [UDP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server/server.rs)
-- [TCP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/tcp_echo_server/main.rs)
+- [TCP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_tcp/main.rs)
 - [HTTP Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/server.rs)
 - [HTTP Client](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/client.rs)
 
