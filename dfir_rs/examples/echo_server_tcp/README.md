@@ -1,19 +1,18 @@
-Simple TCP echo server example.
+Simple TCP echo server and client example.
 
-To run the example:
+To run the example, open 2 terminals.
+
+In one terminal run the server like so:
 ```
-cargo run -p dfir_rs --example echo_server_tcp
-```
-
-The server will start listening on `localhost:3001`. You can test it using telnet or netcat:
-
-```bash
-telnet localhost 3001
-# or
-nc localhost 3001
+cargo run -p dfir_rs --example echo_server_tcp -- --role server --address localhost:3001
 ```
 
-Type messages and they will be echoed back with an "Echo: " prefix.
+In another terminal run a client:
+```
+cargo run -p dfir_rs --example echo_server_tcp -- --role client --address localhost:3001
+```
+
+If you type in the client terminal the message will be sent to the server, echo'd back to the client and printed with a checksum and server timestamp.
 
 This example demonstrates:
 - TCP connection handling with proper LocalSet usage
@@ -21,4 +20,4 @@ This example demonstrates:
 - Error handling using demux for success/error paths
 - Connection state management for reliable TCP communication
 
-Adding the `--graph <graph_type>` flag to the end of the command line above will print out a node-and-edge diagram of the program. Supported values for `<graph_type>` include [mermaid](https://mermaid-js.github.io/) and [dot](https://graphviz.org/doc/info/lang.html).
+Adding the `--graph <graph_type>` flag to the end of the command lines above will print out a node-and-edge diagram of the program. Supported values for `<graph_type>` include [mermaid](https://mermaid-js.github.io/) and [dot](https://graphviz.org/doc/info/lang.html).

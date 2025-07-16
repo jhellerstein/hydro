@@ -287,19 +287,18 @@ use tokio::task::LocalSet;
 async fn main() {
     let addr = "127.0.0.1:3000";
     
-    // Step 1: LocalSet-wrapped binding
-    let (sink, stream, addr) = LocalSet::new().run_until(async move {
-        dfir_rs::util::bind_tcp_lines(addr).await
-    }).await;
-    
-    // Step 2: DFIR graph definition (outside LocalSet)
-    let mut flow = dfir_syntax! {
-        source_stream(stream) -> dest_sink(sink);
-    };
-    
-    // Step 3: LocalSet-wrapped execution
+    // Single LocalSet scope for both binding and execution
     LocalSet::new().run_until(async move {
-        flow.run_async().await
+        // Step 1: Bind within LocalSet
+        let (sink, stream, addr) = dfir_rs::util::bind_tcp_lines(addr).await;
+        
+        // Step 2: DFIR graph definition
+        let mut flow = dfir_syntax! {
+            source_stream(stream) -> dest_sink(sink);
+        };
+        
+        // Step 3: Execute within same LocalSet
+        flow.run_async().await;
     }).await;
 }
 ```

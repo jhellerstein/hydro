@@ -1,96 +1,86 @@
-//[imports]//
 use std::net::SocketAddr;
-use bytes::{Bytes, BytesMut};
-use tokio::task::LocalSet;
 
-use dfir_rs::{dfir_syntax, var_args};
-use dfir_rs::util::bind_tcp_bytes;
-//[/imports]//
+use clap::{Parser, ValueEnum};
+use client::run_client;
+use dfir_rs::lang::graph::{WriteConfig, WriteGraphType};
+use dfir_rs::tokio;
+use dfir_rs::util::ipv4_resolve;
+use server::run_server;
 
-/// Example TCP echo server using DFIR
-///
-/// This demonstrates how to create a TCP server that:
-/// 1. Binds to a local address and accepts TCP connections
-/// 2. Processes incoming TCP messages through a DFIR pipeline
-/// 3. Echoes messages back to clients over the same TCP connection
-///
-/// Usage: cargo run --example tcp_echo_server
-///
-/// To test the server, you can use telnet or netcat:
-/// ```bash
-/// telnet localhost 3001
-/// # or
-/// nc localhost 3001
-/// ```
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //[bind_tcp]//
-    // Bind TCP server to localhost:3001
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-    
-    // TCP operations require LocalSet for testing/example purposes
-    let local = LocalSet::new();
-    let (response_send, request_recv, bound_addr) = local.run_until(async {
-        bind_tcp_bytes(addr).await
-    }).await;
-    //[/bind_tcp]//
+mod client;
+mod helpers;
+mod protocol;
+mod server;
 
-    println!("🚀 TCP Echo Server listening on {}", bound_addr);
-    println!("📋 Test with: telnet {} {}", bound_addr.ip(), bound_addr.port());
-    println!("📋 Or with: nc {} {}", bound_addr.ip(), bound_addr.port());
-    println!("📋 Type messages and they will be echoed back!");
-    println!();
-    println!("Press Ctrl+C to stop the server.");
+/// This is the main entry-point for both `Client` and `Server`.
+#[dfir_rs::main]
+async fn main() {
+    // Parse command line arguments
+    let opts = Opts::parse();
 
-    //[dfir_flow]//
-    let mut server = dfir_syntax! {
-        //[request_processing]//
-        // Stream of incoming TCP messages - use demux for error handling
-        messages = source_stream(request_recv)
-            -> demux(|result: Result<(BytesMut, SocketAddr), std::io::Error>, var_args!(success, error)| {
-                match result {
-                    Ok((data, client_addr)) => {
-                        println!("📨 Received {} bytes from {}", data.len(), client_addr);
-                        let message = String::from_utf8_lossy(&data);
-                        println!("   Content: {:?}", message.trim());
-                        success.give((data, client_addr))
-                    },
-                    Err(err) => {
-                        println!("❌ Error receiving data: {:?}", err);
-                        error.give(err)
-                    },
-                }
-            });
-        //[/request_processing]//
+    // Run the server or the client based on the role provided in the command-line arguments.
+    match opts.role {
+        Role::Server => {
+            run_server(opts).await;
+        }
+        Role::Client => {
+            run_client(opts).await;
+        }
+    }
+}
 
-        //[echo_logic]//
-        // Echo messages back to clients
-        messages[success]
-            -> map(|(data, client_addr): (BytesMut, SocketAddr)| {
-                // Create echo response by prepending "Echo: " to the original message
-                let echo_message = format!("Echo: {}", String::from_utf8_lossy(&data));
-                println!("📤 Echoing to {}: {:?}", client_addr, echo_message.trim());
-                (Bytes::from(echo_message.into_bytes()), client_addr)
-            })
-            -> dest_sink(response_send);
-        //[/echo_logic]//
+// The `Opts` structure contains the command line arguments accepted by the application and can
+// be modified to suit your requirements. Refer to the clap crate documentation for more
+// information.  The lines starting with
+// `///` contain the message that appears when you run the compiled binary with the '--help'
+// arguments, so feel free to change it to whatever makes sense for your application.
+// See https://docs.rs/clap/latest/clap/ for more information.
+/// A simple TCP echo server & client generated using the DFIR template.
+#[derive(Parser, Debug)]
+struct Opts {
+    /// The role this application process should assume. The example in the template provides two
+    /// roles: server and client. The server echoes whatever message the clients send to it.
+    #[clap(value_enum, long)] // value_enum => parse as enum. long => "--role" instead of "-r".
+    role: Role,
 
-        //[error_handling]//
-        // Handle connection errors (optional - for debugging)
-        messages[error]
-            -> for_each(|err| {
-                eprintln!("🔥 TCP error: {}", err);
-            });
-        //[/error_handling]//
-    };
-    //[/dfir_flow]//
+    /// The server's network address. The server listens on this address. The client sends messages
+    /// to this address. Format is `"ip:port"`.
+    // `value_parser`: parse using ipv4_resolve
+    #[clap(long, value_parser = ipv4_resolve, default_value = DEFAULT_SERVER_ADDRESS)]
+    address: SocketAddr,
 
-    //[run_server]//
-    println!("🎯 TCP Echo Server is running...");
-    local.run_until(async {
-        server.run_async().await
-    }).await;
-    //[/run_server]//
-    
-    Ok(())
+    /// If specified, a graph representation of the flow used by the program will be
+    /// printed to the console in the specified format. This parameter can be removed if your
+    /// application doesn't need this functionality.
+    #[clap(long)]
+    graph: Option<WriteGraphType>,
+
+    #[clap(flatten)]
+    write_config: Option<WriteConfig>,
+}
+
+/// The default server address & port on which the server listens for incoming messages. Clients
+/// send message to this address & port.
+pub const DEFAULT_SERVER_ADDRESS: &str = "localhost:3001";
+
+/// A running application can assume one of these roles. The launched application process assumes
+/// one of these roles, based on the `--role` parameter passed in as a command line argument.
+#[derive(Clone, ValueEnum, Debug)]
+enum Role {
+    Client,
+    Server,
+}
+
+#[test]
+fn test() {
+    use example_test::run_current_example;
+
+    let mut server = run_current_example!("--role server --address 127.0.0.1:2049");
+    server.read_string("Server is live! Listening on 127.0.0.1:2049");
+
+    let mut client = run_current_example!("--role client --address 127.0.0.1:2049");
+    client.read_string("Client is live! Connecting to server 127.0.0.1:2049");
+
+    client.write_line("Hello TCP");
+    client.read_string("UTC: Got EchoMsg { payload: \"Hello TCP\",");
 }
