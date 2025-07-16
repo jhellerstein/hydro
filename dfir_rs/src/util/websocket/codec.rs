@@ -23,6 +23,7 @@ pub struct WebSocketCodec {
 #[derive(Debug, Clone)]
 pub struct WebSocketServerCodec {
     /// HTTP codec for handling the initial handshake
+    #[allow(dead_code)]
     http_codec: HttpCodec,
     /// WebSocket codec for handling frames after upgrade
     ws_codec: Option<WebSocketCodec>,
@@ -32,6 +33,7 @@ pub struct WebSocketServerCodec {
 #[derive(Debug, Clone)]
 pub struct WebSocketClientCodec {
     /// HTTP codec for handling the initial handshake
+    #[allow(dead_code)]
     http_codec: HttpCodec,
     /// WebSocket codec for handling frames after upgrade
     ws_codec: Option<WebSocketCodec>,

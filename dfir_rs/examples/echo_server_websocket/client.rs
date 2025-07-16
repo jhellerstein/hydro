@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use dfir_rs::dfir_syntax;
 use dfir_rs::util::WebSocketMessage;
 
-#[tokio::main]
+#[dfir_rs::main]
 async fn main() {
     let server_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     println!("Creating WebSocket client to test echo server at {}", server_addr);

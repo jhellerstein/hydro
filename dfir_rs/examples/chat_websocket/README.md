@@ -10,6 +10,7 @@ supports user names, and broadcasts messages to all connected clients.
 - Real-time message broadcasting
 - Proper WebSocket protocol handling (ping/pong, close frames)
 - DFIR streaming architecture for message processing
+- Command-line interface for server and client roles
 
 ## Running the Example
 
@@ -18,7 +19,12 @@ To run the chat example, you'll need two terminals - one for the server and one 
 ### Running the Server
 In one terminal, start the chat server:
 ```shell
-cargo run -p dfir_rs --example chat_websocket
+cargo run -p dfir_rs --example chat_websocket -- --name "Server" --role server
+```
+
+You can also specify a custom address:
+```shell
+cargo run -p dfir_rs --example chat_websocket -- --name "Server" --role server --address 127.0.0.1:9090
 ```
 
 The server will start listening on `127.0.0.1:8080` by default.
@@ -26,10 +32,16 @@ The server will start listening on `127.0.0.1:8080` by default.
 ### Running Clients
 In another terminal (or multiple terminals for multiple clients), run the client:
 ```shell
-cargo run -p dfir_rs --bin chat_websocket --bin client
+cargo run -p dfir_rs --example chat_websocket -- --name "Alice" --role client
 ```
 
-Note: If the client binary doesn't work, you can also use a WebSocket client tool like `wscat`:
+To connect to a custom server address:
+```shell
+cargo run -p dfir_rs --example chat_websocket -- --name "Alice" --role client --address 127.0.0.1:9090
+```
+
+### Alternative: Using wscat for Testing
+You can also test the WebSocket chat server using `wscat`:
 ```shell
 # Install wscat if you don't have it
 npm install -g wscat
@@ -47,11 +59,25 @@ Once connected, you can use these commands:
 
 ### Example Session
 
-1. Start the server in one terminal
-2. Connect with a client in another terminal  
-3. Set your name: `/name Alice`
-4. Send messages: `Hello everyone!`
-5. Messages will be broadcast to all connected clients with your name prefix
+1. Start the server in one terminal:
+   ```shell
+   cargo run -p dfir_rs --example chat_websocket -- --name "Server" --role server
+   ```
+
+2. Connect with a client in another terminal:
+   ```shell
+   cargo run -p dfir_rs --example chat_websocket -- --name "Alice" --role client
+   ```
+
+3. The client will automatically set its name and join the chat
+4. Type messages in the client terminal to send them to all connected clients
+
+### Command Line Options
+
+- `--name <name>`: Your display name (required)
+- `--role <client|server>`: Whether to run as client or server (required)
+- `--address <ip:port>`: Server address to bind to (server) or connect to (client) (optional, defaults to 127.0.0.1:8080)
+- `--graph <type>`: Print a graph representation of the DFIR flow (optional)
 
 ## Architecture
 

@@ -1,4 +1,5 @@
 mod utils;
+mod websocket_chat;
 
 use dfir_lang::diagnostic::{Diagnostic, Level};
 use dfir_lang::graph::{WriteConfig, build_hfcode};
@@ -151,3 +152,6 @@ pub fn compile_dfir(
 
     serde_wasm_bindgen::to_value(&out).unwrap()
 }
+
+// Re-export WebSocketChat for use in JavaScript
+pub use websocket_chat::WebSocketChat;

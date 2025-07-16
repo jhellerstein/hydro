@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>DFIR WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+                         <input type="text" id="server-url" placeholder="ws://localhost:3001" value="ws://localhost:3001">  margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chat-section {
+            margin-bottom: 20px;
+        }
+        .connection-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .connection-controls input, .connection-controls button {
+            margin: 5px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .connection-controls button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        .connection-controls button:hover {
+            background-color: #0056b3;
+        }
+        .connection-controls button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .chat-container {
+            border: 1px solid #ddd;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #fafafa;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: white;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+        }
+        .message.own {
+            background-color: #e3f2fd;
+            border-left-color: #2196f3;
+        }
+        .message.system {
+            background-color: #fff3e0;
+            border-left-color: #ff9800;
+            font-style: italic;
+        }
+        .message .timestamp {
+            font-size: 0.8em;
+            color: #666;
+            margin-right: 10px;
+        }
+        .message .username {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #007bff;
+        }
+        .message-input-container {
+            display: flex;
+            gap: 10px;
+        }
+        .message-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .send-button {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .send-button:hover {
+            background-color: #218838;
+        }
+        .send-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .user-list {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .user-list h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .user-item {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 4px 8px;
+            margin: 2px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌊 DFIR WebSocket Chat</h1>
+        
+        <div class="loading" id="loading">Loading WASM module...</div>
+        
+        <div class="chat-section" id="chat-section" style="display: none;">
+            <div class="connection-controls">
+                <input type="text" id="server-url" placeholder="ws://localhost:8080" value="ws://localhost:8080">
+                <input type="text" id="username" placeholder="Your username" value="WebUser">
+                <button id="connect-btn">Connect</button>
+                <button id="disconnect-btn" disabled>Disconnect</button>
+            </div>
+            
+            <div class="status disconnected" id="status">Disconnected</div>
+            
+            <div class="chat-container" id="chat-container"></div>
+            
+            <div class="message-input-container">
+                <input type="text" id="message-input" class="message-input" placeholder="Type your message..." disabled>
+                <button id="send-btn" class="send-button" disabled>Send</button>
+            </div>
+            
+            <div class="user-list" id="user-list-container" style="display: none;">
+                <h3>Active Users</h3>
+                <div id="user-list"></div>
+            </div>
+        </div>
+        
+        <div class="error" id="error-container" style="display: none;"></div>
+    </div>
+
+    <script type="module">
+        import init, { WebSocketChat } from './pkg/website_playground.js';
+        
+        async function run() {
+            try {
+                // Initialize the WASM module
+                await init();
+                
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('chat-section').style.display = 'block';
+                
+                // Create the WebSocket chat instance
+                const chat = new WebSocketChat();
+                
+                // Set up event handlers
+                setupEventHandlers(chat);
+                
+            } catch (err) {
+                console.error('Failed to initialize WASM module:', err);
+                document.getElementById('loading').textContent = 'Failed to load application: ' + err.message;
+                showError('Failed to initialize WebSocket chat: ' + err.message);
+            }
+        }
+        
+        function setupEventHandlers(chat) {
+            const connectBtn = document.getElementById('connect-btn');
+            const disconnectBtn = document.getElementById('disconnect-btn');
+            const serverUrl = document.getElementById('server-url');
+            const username = document.getElementById('username');
+            const messageInput = document.getElementById('message-input');
+            const sendBtn = document.getElementById('send-btn');
+            const statusDiv = document.getElementById('status');
+            const chatContainer = document.getElementById('chat-container');
+            
+            // Connect button
+            connectBtn.addEventListener('click', () => {
+                const url = serverUrl.value.trim();
+                const user = username.value.trim();
+                
+                if (!url || !user) {
+                    showError('Please enter both server URL and username');
+                    return;
+                }
+                
+                try {
+                    chat.connect(url, user);
+                    updateConnectionState('connecting');
+                } catch (err) {
+                    showError('Failed to connect: ' + err.message);
+                }
+            });
+            
+            // Disconnect button
+            disconnectBtn.addEventListener('click', () => {
+                try {
+                    chat.disconnect();
+                    updateConnectionState('disconnected');
+                } catch (err) {
+                    showError('Failed to disconnect: ' + err.message);
+                }
+            });
+            
+            // Send message
+            function sendMessage() {
+                const message = messageInput.value.trim();
+                if (message) {
+                    try {
+                        chat.send_message(message);
+                        messageInput.value = '';
+                    } catch (err) {
+                        showError('Failed to send message: ' + err.message);
+                    }
+                }
+            }
+            
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Set up chat event callbacks
+            chat.set_on_connected(() => {
+                updateConnectionState('connected');
+                hideError();
+            });
+            
+            chat.set_on_disconnected(() => {
+                updateConnectionState('disconnected');
+            });
+            
+            chat.set_on_error((error) => {
+                showError('WebSocket error: ' + error);
+                updateConnectionState('disconnected');
+            });
+            
+            chat.set_on_message_received((message, sender, timestamp) => {
+                addMessage(message, sender, timestamp, false);
+            });
+            
+            chat.set_on_message_sent((message, timestamp) => {
+                addMessage(message, username.value, timestamp, true);
+            });
+            
+            chat.set_on_user_joined((user) => {
+                addSystemMessage(`${user} joined the chat`);
+                updateUserList();
+            });
+            
+            chat.set_on_user_left((user) => {
+                addSystemMessage(`${user} left the chat`);
+                updateUserList();
+            });
+            
+            function updateConnectionState(state) {
+                const isConnected = state === 'connected';
+                const isConnecting = state === 'connecting';
+                
+                connectBtn.disabled = isConnected || isConnecting;
+                disconnectBtn.disabled = !isConnected && !isConnecting;
+                messageInput.disabled = !isConnected;
+                sendBtn.disabled = !isConnected;
+                serverUrl.disabled = isConnected || isConnecting;
+                username.disabled = isConnected || isConnecting;
+                
+                statusDiv.className = `status ${state}`;
+                statusDiv.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+            }
+            
+            function addMessage(content, sender, timestamp, isOwnMessage) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isOwnMessage ? 'own' : ''}`;
+                
+                const time = new Date(timestamp).toLocaleTimeString();
+                messageDiv.innerHTML = `
+                    <span class="timestamp">${time}</span>
+                    <span class="username">${sender}:</span>
+                    <span class="content">${escapeHtml(content)}</span>
+                `;
+                
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            function addSystemMessage(content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message system';
+                
+                const time = new Date().toLocaleTimeString();
+                messageDiv.innerHTML = `
+                    <span class="timestamp">${time}</span>
+                    <span class="content">${escapeHtml(content)}</span>
+                `;
+                
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            function updateUserList() {
+                try {
+                    const users = chat.get_active_users();
+                    const userListContainer = document.getElementById('user-list-container');
+                    const userList = document.getElementById('user-list');
+                    
+                    if (users.length > 0) {
+                        userListContainer.style.display = 'block';
+                        userList.innerHTML = users.map(user => 
+                            `<span class="user-item">${escapeHtml(user)}</span>`
+                        ).join('');
+                    } else {
+                        userListContainer.style.display = 'none';
+                    }
+                } catch (err) {
+                    console.warn('Failed to update user list:', err);
+                }
+            }
+        }
+        
+        function showError(message) {
+            const errorContainer = document.getElementById('error-container');
+            errorContainer.textContent = message;
+            errorContainer.style.display = 'block';
+        }
+        
+        function hideError() {
+            document.getElementById('error-container').style.display = 'none';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        run();
+    </script>
+</body>
+</html>

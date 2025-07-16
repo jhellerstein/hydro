@@ -2,15 +2,20 @@ use std::net::SocketAddr;
 
 use dfir_rs::dfir_syntax;
 use dfir_rs::util::{WebSocketMessage, WebSocketError};
+use tokio::task::LocalSet;
 
 #[tokio::main]
 async fn main() {
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     println!("Starting WebSocket chat server on {}", addr);
     
-    // Create WebSocket server channels
-    let (response_send, request_recv, addr) = dfir_rs::util::bind_websocket_server(addr).await;
+    // WebSocket operations require LocalSet for proper execution
+    LocalSet::new().run_until(async {
+        println!("Creating WebSocket server channels...");
+        // Create WebSocket server channels
+        let (response_send, request_recv, addr) = dfir_rs::util::bind_websocket_server(addr).await;
     println!("Chat server bound to: {}", addr);
+    println!("WebSocket server ready to accept connections");
     
     // Create DFIR flow to handle chat messages
     let mut flow = dfir_syntax! {
@@ -19,11 +24,35 @@ async fn main() {
             -> map(|result| {
                 match result {
                     Ok((msg, client_addr)) => {
-                        println!("Received from {}: {:?}", client_addr, msg);
+                        println!("Successfully received from {}: {:?}", client_addr, msg);
                         Some((msg, client_addr))
                     }
                     Err(e) => {
-                        eprintln!("WebSocket error: {:?}", e);
+                        eprintln!("WebSocket error from client: {:?}", e);
+                        // Log more details about the error
+                        match &e {
+                            dfir_rs::util::WebSocketError::InvalidFrame(details) => {
+                                eprintln!("Frame parsing error details: {}", details);
+                            }
+                            dfir_rs::util::WebSocketError::Io(io_err) => {
+                                eprintln!("IO error: {}", io_err);
+                            }
+                            dfir_rs::util::WebSocketError::InvalidUtf8(utf8_err) => {
+                                eprintln!("UTF8 error: {}", utf8_err);
+                            }
+                            dfir_rs::util::WebSocketError::HandshakeError(handshake_err) => {
+                                eprintln!("Handshake error: {}", handshake_err);
+                            }
+                            dfir_rs::util::WebSocketError::ProtocolViolation(protocol_err) => {
+                                eprintln!("Protocol violation: {}", protocol_err);
+                            }
+                            dfir_rs::util::WebSocketError::FrameTooLarge { size, max_size } => {
+                                eprintln!("Frame too large: {} bytes (max: {})", size, max_size);
+                            }
+                            dfir_rs::util::WebSocketError::ConnectionClosed { code, reason } => {
+                                eprintln!("Connection closed: {:?} - {}", code, reason);
+                            }
+                        }
                         None
                     }
                 }
@@ -76,5 +105,6 @@ async fn main() {
     };
 
     println!("Chat server running... Press Ctrl+C to stop");
-    flow.run_available();
+    flow.run_async().await;
+    }).await;
 }

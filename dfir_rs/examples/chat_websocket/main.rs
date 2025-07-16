@@ -1,80 +1,48 @@
 use std::net::SocketAddr;
 
-use dfir_rs::dfir_syntax;
-use dfir_rs::util::WebSocketMessage;
+use clap::{Parser, ValueEnum};
+use client::run_client;
+use dfir_rs::lang::graph::{WriteConfig, WriteGraphType};
+use dfir_rs::util::ipv4_resolve;
+use server::run_server;
 
-#[tokio::main]
+mod client;
+mod server;
+
+#[derive(Clone, Copy, ValueEnum, Debug, Eq, PartialEq)]
+pub enum Role {
+    Client,
+    Server,
+}
+
+pub fn default_server_address() -> SocketAddr {
+    ipv4_resolve("localhost:8080").unwrap()
+}
+
+#[derive(Parser, Debug)]
+pub struct Opts {
+    #[clap(long)]
+    pub name: String,
+    #[clap(value_enum, long)]
+    pub role: Role,
+    #[clap(long, value_parser = ipv4_resolve)]
+    pub address: Option<SocketAddr>,
+    #[clap(long)]
+    pub graph: Option<WriteGraphType>,
+    #[clap(flatten)]
+    pub write_config: Option<WriteConfig>,
+}
+
+#[dfir_rs::main]
 async fn main() {
-    let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-    println!("Starting WebSocket chat server on {}", addr);
-    
-    // Create WebSocket server channels
-    let (response_send, request_recv, addr) = dfir_rs::util::bind_websocket_server(addr).await;
-    println!("Chat server bound to: {}", addr);
-    
-    // Create DFIR flow to handle chat messages
-    let mut flow = dfir_syntax! {
-        // Receive messages from clients
-        input_stream = source_stream(request_recv)
-            -> map(|result| {
-                match result {
-                    Ok((msg, client_addr)) => {
-                        println!("Received from {}: {:?}", client_addr, msg);
-                        Some((msg, client_addr))
-                    }
-                    Err(e) => {
-                        eprintln!("WebSocket error: {:?}", e);
-                        None
-                    }
-                }
-            })
-            -> filter_map(|x| x);
+    let opts = Opts::parse();
 
-        // Handle different message types
-        chat_messages = input_stream
-            -> map(|(msg, client_addr)| {
-                match msg {
-                    WebSocketMessage::Text(text) => {
-                        if text.starts_with("/name ") {
-                            // User setting their name
-                            let name = text[6..].trim().to_string();
-                            println!("Client {} set name to: {}", client_addr, name);
-                            let welcome_msg = format!("Welcome, {}! You are now in the chat.", name);
-                            (WebSocketMessage::Text(welcome_msg), client_addr)
-                        } else if text.starts_with("/") {
-                            // Other commands
-                            let help_msg = "Unknown command. Available commands: /name <your_name>".to_string();
-                            (WebSocketMessage::Text(help_msg), client_addr)
-                        } else {
-                            // Regular chat message
-                            let chat_msg = format!("{}: {}", client_addr, text);
-                            println!("Broadcasting: {}", chat_msg);
-                            (WebSocketMessage::Text(chat_msg), client_addr)
-                        }
-                    }
-                    WebSocketMessage::Ping(data) => {
-                        println!("Ping from {}, sending pong", client_addr);
-                        (WebSocketMessage::Pong(data), client_addr)
-                    }
-                    WebSocketMessage::Close(close_frame) => {
-                        println!("Client {} disconnected: {:?}", client_addr, close_frame);
-                        let leave_msg = format!("{} left the chat", client_addr);
-                        (WebSocketMessage::Text(leave_msg), client_addr)
-                    }
-                    WebSocketMessage::Binary(_) => {
-                        let error_msg = "Binary messages not supported in chat".to_string();
-                        (WebSocketMessage::Text(error_msg), client_addr)
-                    }
-                    WebSocketMessage::Pong(_) => {
-                        println!("Received pong from {}", client_addr);
-                        let status_msg = "Pong received".to_string();
-                        (WebSocketMessage::Text(status_msg), client_addr)
-                    }
-                }
-            })
-            -> dest_sink(response_send);
-    };
-
-    println!("Chat server running... Press Ctrl+C to stop");
-    flow.run_available();
+    match opts.role {
+        Role::Client => {
+            run_client(opts).await;
+        }
+        Role::Server => {
+            run_server(opts).await;
+        }
+    }
 }

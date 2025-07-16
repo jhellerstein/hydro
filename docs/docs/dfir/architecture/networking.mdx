@@ -6,11 +6,14 @@ import echoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_serve
 import tcpEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server_tcp/main.rs';
 import httpServerCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/server.rs';
 import httpClientCode from '!!raw-loader!../../../../dfir_rs/examples/http_server/client.rs';
+import websocketChatServerCode from '!!raw-loader!../../../../dfir_rs/examples/chat_websocket/server.rs';
+import websocketChatClientCode from '!!raw-loader!../../../../dfir_rs/examples/chat_websocket/client.rs';
+import websocketEchoServerCode from '!!raw-loader!../../../../dfir_rs/examples/echo_server_websocket/main.rs';
 import { getLines } from '../../../src/util';
 
 # Networking with DFIR
 
-DFIR provides comprehensive networking support for building distributed systems that process data streams over UDP, TCP, and HTTP protocols. This guide covers the fundamental networking patterns and demonstrates how to build servers and clients using DFIR's declarative dataflow programming model.
+DFIR provides comprehensive networking support for building distributed systems that process data streams over UDP, TCP, HTTP, and WebSocket protocols. This guide covers the fundamental networking patterns and demonstrates how to build servers and clients using DFIR's declarative dataflow programming model.
 
 ## Overview
 
@@ -18,7 +21,7 @@ DFIR's networking model follows these key principles:
 
 - **Stream-oriented**: Network data flows as streams through DFIR operators
 - **Dataflow Programming**: Network logic is expressed as dataflow graphs
-- **Protocol-agnostic**: Similar patterns work across UDP, TCP, and HTTP
+- **Protocol-agnostic**: Similar patterns work across UDP, TCP, HTTP, and WebSocket
 - **Error-aware**: Built-in error handling with demux routing
 - **Address-aware**: All network operations include source/destination addressing
 
@@ -173,6 +176,101 @@ Key HTTP characteristics:
 
 **Testing:** See [dfir_rs/examples/http_server/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/README.md) for instructions on running and testing both the server and client examples.
 
+## WebSocket Networking
+
+WebSockets provide full-duplex communication over TCP with HTTP upgrade handshake. DFIR's WebSocket support enables real-time bidirectional messaging with automatic connection management and frame handling.
+
+**Note:** Like TCP and HTTP operations, WebSocket operations in DFIR also require `LocalSet` since they use the underlying TCP infrastructure for connection management.
+
+### WebSocket Chat Server
+
+**Source:** [dfir_rs/examples/chat_websocket/server.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/chat_websocket/server.rs)
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatServerCode, 'imports')}</CodeBlock>
+
+WebSocket servers bind to addresses and automatically handle the HTTP upgrade handshake:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatServerCode, 'bind_websocket')}</CodeBlock>
+
+The WebSocket chat server demonstrates message broadcasting and command processing:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatServerCode, 'dfir_flow')}</CodeBlock>
+
+Key WebSocket characteristics:
+- **Full-duplex**: Bidirectional real-time communication
+- **Frame-based**: Structured message types (Text, Binary, Ping, Pong, Close)
+- **Connection-oriented**: Persistent connections with state management
+- **HTTP upgrade**: Starts as HTTP then upgrades to WebSocket protocol
+
+**Testing:** See [dfir_rs/examples/chat_websocket/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/chat_websocket/README.md) for instructions on running and testing this example.
+
+### WebSocket Echo Server
+
+**Source:** [dfir_rs/examples/echo_server_websocket/main.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_websocket/main.rs)
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketEchoServerCode, 'imports')}</CodeBlock>
+
+A simpler WebSocket server that echoes messages back to clients:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketEchoServerCode, 'bind_websocket')}</CodeBlock>
+
+The echo server handles different WebSocket message types:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketEchoServerCode, 'dfir_flow')}</CodeBlock>
+
+**Testing:** See [dfir_rs/examples/echo_server_websocket/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_websocket/README.md) for instructions on running and testing this example.
+
+### WebSocket Client
+
+**Source:** [dfir_rs/examples/chat_websocket/client.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/chat_websocket/client.rs)
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatClientCode, 'imports')}</CodeBlock>
+
+WebSocket clients connect to servers and can send/receive messages:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatClientCode, 'connect_websocket')}</CodeBlock>
+
+Client message processing with automatic connection handling:
+
+<CodeBlock language="rust" showLineNumbers>{getLines(websocketChatClientCode, 'dfir_flow')}</CodeBlock>
+
+### WebSocket Message Types
+
+DFIR WebSocket support includes all standard WebSocket frame types:
+
+```rust
+// WebSocket message types
+enum WebSocketMessage {
+    Text(String),           // UTF-8 text messages
+    Binary(Vec<u8>),        // Binary data messages  
+    Ping(Vec<u8>),          // Ping frames for keepalive
+    Pong(Vec<u8>),          // Pong responses
+    Close(CloseFrame),      // Connection close frames
+}
+```
+
+### WebSocket Error Handling
+
+WebSocket operations use consistent error handling with the networking stack:
+
+```rust
+// WebSocket error handling
+messages = source_stream(websocket_recv)
+    -> map(|result| {
+        match result {
+            Ok((msg, client_addr)) => {
+                println!("Received from {}: {:?}", client_addr, msg);
+                Some((msg, client_addr))
+            }
+            Err(e) => {
+                eprintln!("WebSocket error: {:?}", e);
+                None
+            }
+        }
+    })
+    -> filter_map(|x| x);
+```
+
 ## Error Handling
 
 All DFIR networking uses consistent error handling patterns with demux:
@@ -198,6 +296,7 @@ DFIR networking operators always include address information:
 - **UDP**: `(data, SocketAddr)` tuples for each packet
 - **TCP**: `(data, SocketAddr)` tuples identifying the connection
 - **HTTP**: `(HttpRequest/Response, SocketAddr)` tuples with client info
+- **WebSocket**: `(WebSocketMessage, SocketAddr)` tuples with client connection info
 
 ## Performance Considerations
 
@@ -216,6 +315,12 @@ DFIR networking operators always include address information:
 - Use appropriate content encoding
 - Consider HTTP/2 for multiplexing (future enhancement)
 
+### WebSocket Performance
+- Persistent connections reduce connection overhead
+- Frame types optimize for message content (text vs binary)
+- Built-in ping/pong for connection keepalive
+- Consider message batching for high-frequency updates
+
 ## Advanced Patterns
 
 ### Multi-protocol Servers
@@ -224,21 +329,26 @@ Single DFIR graphs can handle multiple protocols:
 
 ```rust
 dfir_syntax! {
-    // Combine UDP and TCP streams
+    // Combine multiple protocol streams
     udp_messages = source_stream(udp_recv) -> map(tag_udp);
     tcp_messages = source_stream(tcp_recv) -> map(tag_tcp);
+    websocket_messages = source_stream(websocket_recv) -> map(tag_websocket);
     
-    all_messages = union(udp_messages, tcp_messages) -> process_unified;
+    all_messages = union(udp_messages, tcp_messages, websocket_messages) -> process_unified;
 }
 ```
 
 ### Protocol Composition
 
-DFIR's uniform stream model also enables protocol composition:
+DFIR's uniform stream model enables protocol composition:
 
 ```rust
 // HTTP over UDP tunnel
 udp_stream -> map(parse_http) -> demux(route_requests) -> map(generate_response) -> udp_sink
+
+// WebSocket message relay
+websocket_stream -> map(extract_text) -> tcp_sink
+tcp_stream -> map(wrap_websocket) -> websocket_sink
 ```
 
 
@@ -278,6 +388,7 @@ Understanding when LocalSet is required for DFIR networking:
 | **UDP** | ❌ No | Uses regular tokio tasks and thread-safe operations |
 | **TCP** | ✅ Yes | Internal `spawn_local` usage for connection management |
 | **HTTP** | ✅ Yes | Built on TCP infrastructure, inherits LocalSet requirement |
+| **WebSocket** | ✅ Yes | Built on TCP infrastructure, inherits LocalSet requirement |
 
 **Canonical LocalSet Usage Pattern:**
 ```rust
@@ -289,8 +400,9 @@ async fn main() {
     
     // Single LocalSet scope for both binding and execution
     LocalSet::new().run_until(async move {
-        // Step 1: Bind within LocalSet
+        // Step 1: Bind within LocalSet (TCP/HTTP/WebSocket)
         let (sink, stream, addr) = dfir_rs::util::bind_tcp_lines(addr).await;
+        // or: dfir_rs::util::bind_websocket_server(addr).await;
         
         // Step 2: DFIR graph definition
         let mut flow = dfir_syntax! {
@@ -304,9 +416,9 @@ async fn main() {
 ```
 
 **Why this matters:**
-- LocalSet is only needed for the specific operations that use TCP/HTTP binding and execution
+- LocalSet is only needed for the specific operations that use TCP/HTTP/WebSocket binding and execution
 - You don't need to restructure your entire application around LocalSet
 - UDP operations work fine in regular tokio contexts
-- TCP/HTTP operations will panic at runtime if not within LocalSet context
+- TCP/HTTP/WebSocket operations will panic at runtime if not within LocalSet context
 
 This networking foundation enables building sophisticated distributed systems with DFIR's declarative, stream-oriented programming model.

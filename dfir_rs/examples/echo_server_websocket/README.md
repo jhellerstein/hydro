@@ -24,15 +24,9 @@ cargo run -p dfir_rs --example echo_server_websocket
 The server will start listening on `127.0.0.1:8080` by default.
 
 ### Running the Client
-In another terminal, run the test client:
-```shell
-cargo run -p dfir_rs --bin echo_server_websocket --bin client
-```
+You can test the WebSocket echo server using several methods:
 
-The client will send a series of test messages and display the echoed responses.
-
-### Alternative: Using wscat
-You can also test the echo server using `wscat`:
+#### Option 1: Using wscat (Recommended)
 ```shell
 # Install wscat if you don't have it
 npm install -g wscat
@@ -44,6 +38,17 @@ wscat -c ws://127.0.0.1:8080
 > Hello!
 < Echo: Hello!
 ```
+
+#### Option 2: Using the test client
+The included test client sends a series of test messages automatically:
+```shell
+# Navigate to the client file and run it directly
+cd dfir_rs/examples/echo_server_websocket
+cargo run --bin client  # Note: This may require adding client as a binary target
+```
+
+#### Option 3: Using any WebSocket client
+You can use any WebSocket client tool or library to connect to `ws://127.0.0.1:8080`.
 
 ## Message Types Handled
 

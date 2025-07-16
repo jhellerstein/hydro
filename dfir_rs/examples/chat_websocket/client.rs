@@ -1,27 +1,34 @@
-use std::net::SocketAddr;
-use std::io::{self, BufRead};
-
+//[imports]//
 use dfir_rs::dfir_syntax;
 use dfir_rs::util::WebSocketMessage;
 
-#[tokio::main]
-async fn main() {
-    let server_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+use crate::{Opts, default_server_address};
+//[/imports]//
+
+pub(crate) async fn run_client(opts: Opts) {
+    // Use the server address that was provided in the command-line arguments, or use the default
+    // if one was not provided.
+    let server_addr = opts.address.unwrap_or_else(default_server_address);
+    
     println!("Connecting to WebSocket chat server at {}", server_addr);
+    println!("Your name: {}", opts.name);
     println!("Commands:");
     println!("  /name <your_name> - Set your name");
     println!("  Type any message to chat");
     println!("  Ctrl+C to exit");
     
+    //[connect_websocket]//
     // Create WebSocket client channels
     let (request_send, response_recv) = dfir_rs::util::connect_websocket_client();
+    //[/connect_websocket]//
     
+    //[dfir_flow]//
     // Create DFIR flow for client operations
     let mut flow = dfir_syntax! {
-        // Send join message to server
-        initial_message = source_iter([
-            WebSocketMessage::Text("/name Guest".to_string()),
-            WebSocketMessage::Text("Hello everyone! I just joined the chat.".to_string()),
+        // Send initial name setting and join message
+        initial_messages = source_iter([
+            WebSocketMessage::Text(format!("/name {}", opts.name)),
+            WebSocketMessage::Text(format!("{} joined the chat!", opts.name)),
         ])
             -> map(|msg| {
                 println!("Sending: {:?}", msg);
@@ -58,7 +65,8 @@ async fn main() {
                 }
             });
     };
+    //[/dfir_flow]//
 
     println!("Chat client running... Press Ctrl+C to stop");
-    flow.run_available();
+    flow.run_async().await;
 }

@@ -1,18 +1,23 @@
+//[imports]//
 use std::net::SocketAddr;
 
 use dfir_rs::dfir_syntax;
 use dfir_rs::util::WebSocketMessage;
+//[/imports]//
 
-#[tokio::main]
+#[dfir_rs::main]
 async fn main() {
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     println!("Starting WebSocket echo server on {}", addr);
     
+    //[bind_websocket]//
     // Create WebSocket server channels
     let (response_send, request_recv, addr) = dfir_rs::util::bind_websocket_server(addr).await;
     
     println!("WebSocket server bound to: {}", addr);
+    //[/bind_websocket]//
     
+    //[dfir_flow]//
     // Create DFIR flow to handle WebSocket messages
     let mut flow = dfir_syntax! {
         input_stream = source_stream(request_recv)
@@ -58,7 +63,8 @@ async fn main() {
             })
             -> dest_sink(response_send);
     };
+    //[/dfir_flow]//
 
     println!("Echo server running... Press Ctrl+C to stop");
-    flow.run_available();
+    flow.run_async().await;
 }

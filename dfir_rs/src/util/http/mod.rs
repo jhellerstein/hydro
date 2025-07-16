@@ -135,7 +135,7 @@ pub mod tests;
 pub use codec::{HttpClientCodec, HttpCodec, HttpServerCodec};
 // Import external dependencies needed by the implementations
 use serde::{Deserialize, Serialize};
-pub use types::{Cookie, HttpCodecError, HttpRequest, HttpResponse, SameSite};
+pub use types::{Cookie, HttpCodecError, HttpRequest, HttpResponse};
 
 // Implement Serialize/Deserialize for compatibility with existing code
 impl Serialize for HttpRequest {

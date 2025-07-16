@@ -115,7 +115,9 @@ pub struct WebSocketFrame {
     
     /// Reserved bits (must be 0).
     pub rsv1: bool,
+    /// Reserved bit 2 (must be 0).
     pub rsv2: bool,
+    /// Reserved bit 3 (must be 0).
     pub rsv3: bool,
     
     /// Frame opcode.
@@ -145,12 +147,19 @@ pub enum WebSocketError {
     
     /// Frame too large.
     #[error("Frame too large: {size} bytes (max: {max_size})")]
-    FrameTooLarge { size: usize, max_size: usize },
+    FrameTooLarge { 
+        /// The actual size of the frame
+        size: usize, 
+        /// The maximum allowed size
+        max_size: usize 
+    },
     
     /// Connection closed.
     #[error("Connection closed: {code:?} - {reason}")]
     ConnectionClosed {
+        /// The close code sent by the peer
         code: Option<WebSocketCloseCode>,
+        /// The close reason sent by the peer
         reason: String,
     },
     
