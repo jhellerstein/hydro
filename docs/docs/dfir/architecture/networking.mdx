@@ -48,6 +48,8 @@ UDP provides connectionless, best-effort message delivery. DFIR's UDP support is
 
 ### UDP Echo Server
 
+**Source:** [dfir_rs/examples/echo_server/server.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server/server.rs)
+
 <CodeBlock language="rust" showLineNumbers>{getLines(echoServerCode, 'imports')}</CodeBlock>
 
 UDP servers start by binding to a socket address to create the inbound and outbound streams:
@@ -68,11 +70,15 @@ Key UDP characteristics:
 - **Low overhead**: Minimal protocol overhead
 - **High throughput**: Suitable for streaming data
 
+**Testing:** See [dfir_rs/examples/echo_server/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server/README.md) for instructions on running and testing this example.
+
 ## TCP Networking
 
 TCP provides reliable, connection-oriented byte streams. DFIR's TCP support handles connection management automatically while exposing a stream-based interface.
 
 ### TCP Echo Server
+
+**Source:** [dfir_rs/examples/echo_server_tcp/main.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_tcp/main.rs)
 
 <CodeBlock language="rust" showLineNumbers>{getLines(tcpEchoServerCode, 'imports')}</CodeBlock>
 
@@ -109,6 +115,8 @@ Key TCP characteristics:
 - **Flow control**: Automatic congestion management
 - **Stateful**: Connection state maintained automatically
 
+**Testing:** See [dfir_rs/examples/echo_server_tcp/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_tcp/README.md) for instructions on running and testing this example.
+
 ## HTTP Networking
 
 HTTP builds on TCP to provide request-response semantics with rich metadata. DFIR's HTTP support includes request/response parsing and routing.
@@ -116,6 +124,8 @@ HTTP builds on TCP to provide request-response semantics with rich metadata. DFI
 **Note:** Like TCP operations, HTTP operations in DFIR also require `LocalSet` for the binding and execution phases since they use the underlying TCP infrastructure. You can use the same selective LocalSet pattern as with TCP.
 
 ### HTTP Server
+
+**Source:** [dfir_rs/examples/http_server/server.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/server.rs)
 
 <CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'imports')}</CodeBlock>
 
@@ -135,7 +145,11 @@ Finally, run the DFIR graph:
 
 <CodeBlock language="rust" showLineNumbers>{getLines(httpServerCode, 'run_server')}</CodeBlock>
 
+**Testing:** See [dfir_rs/examples/http_server/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/README.md) for instructions on running and testing this example.
+
 ### HTTP Client
+
+**Source:** [dfir_rs/examples/http_server/client.rs](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/client.rs)
 
 <CodeBlock language="rust" showLineNumbers>{getLines(httpClientCode, 'imports')}</CodeBlock>
 
@@ -156,6 +170,8 @@ Key HTTP characteristics:
 - **Stateless**: Each request is independent
 - **Rich metadata**: Headers, methods, status codes
 - **Content-aware**: Body parsing and generation
+
+**Testing:** See [dfir_rs/examples/http_server/README.md](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/README.md) for instructions on running and testing both the server and client examples.
 
 ## Error Handling
 
@@ -293,13 +309,5 @@ async fn main() {
 - You don't need to restructure your entire application around LocalSet
 - UDP operations work fine in regular tokio contexts
 - TCP/HTTP operations will panic at runtime if not within LocalSet context
-
-## Examples
-
-For complete working examples, see:
-- [UDP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server/server.rs)
-- [TCP Echo Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/echo_server_tcp/main.rs)
-- [HTTP Server](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/server.rs)
-- [HTTP Client](https://github.com/hydro-project/hydro/blob/main/dfir_rs/examples/http_server/client.rs)
 
 This networking foundation enables building sophisticated distributed systems with DFIR's declarative, stream-oriented programming model.
