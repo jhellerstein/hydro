@@ -1,6 +1,7 @@
 //! Cookie handling for HTTP requests and responses.
 
 use std::collections::HashMap;
+
 use crate::util::http::types::{Cookie, SameSite};
 
 impl Cookie {

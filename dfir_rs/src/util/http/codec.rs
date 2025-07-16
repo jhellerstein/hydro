@@ -1,10 +1,12 @@
 //! HTTP codec for parsing and encoding HTTP messages.
 
 use std::collections::HashMap;
-use bytes::{BytesMut, Buf, BufMut};
+
+use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
-use crate::util::http::types::{HttpRequest, HttpResponse, HttpCodecError, Cookie};
+
 use crate::util::http::encoding::parse_query_string;
+use crate::util::http::types::{Cookie, HttpCodecError, HttpRequest, HttpResponse};
 
 /// HTTP codec for parsing and encoding HTTP requests and responses.
 #[derive(Debug, Clone)]
@@ -162,8 +164,10 @@ impl HttpCodec {
 
                 // Parse form data if this is a form request
                 let mut form_data = HashMap::new();
-                if let Some(content_type) = headers_map.get("content-type")
-                    .or_else(|| headers_map.get("Content-Type")) {
+                if let Some(content_type) = headers_map
+                    .get("content-type")
+                    .or_else(|| headers_map.get("Content-Type"))
+                {
                     if content_type.starts_with("application/x-www-form-urlencoded") {
                         if let Ok(body_str) = std::str::from_utf8(&body) {
                             form_data = crate::util::http::encoding::parse_form_string(body_str);
@@ -248,7 +252,7 @@ impl HttpCodec {
                     status_code,
                     status_text,
                     headers: headers_map,
-                    set_cookies: Vec::new(), // Set-Cookie headers would be parsed separately if needed
+                    set_cookies: Vec::new(), /* Set-Cookie headers would be parsed separately if needed */
                     body,
                 }))
             }
@@ -502,9 +506,10 @@ impl Encoder<HttpRequest> for HttpClientCodec {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use bytes::BytesMut;
     use tokio_util::codec::{Decoder, Encoder};
+
+    use super::*;
 
     #[test]
     fn test_chunked_encoding() -> Result<(), Box<dyn std::error::Error>> {

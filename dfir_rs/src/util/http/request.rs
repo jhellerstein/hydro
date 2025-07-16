@@ -1,9 +1,13 @@
 //! HTTP request handling and builder methods.
 
 use std::collections::HashMap;
+
 use serde::Serialize;
+
+use crate::util::http::encoding::{
+    encode_form_data, parse_form_string, parse_query_string, url_encode,
+};
 use crate::util::http::types::HttpRequest;
-use crate::util::http::encoding::{url_encode, parse_query_string, parse_form_string, encode_form_data};
 
 impl HttpRequest {
     /// Create a simple GET request.
@@ -188,7 +192,10 @@ impl HttpRequest {
     pub fn post_form(path: impl Into<String>, form_data: HashMap<String, String>) -> Self {
         let body = encode_form_data(&form_data);
         let mut headers = HashMap::new();
-        headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+        headers.insert(
+            "Content-Type".to_string(),
+            "application/x-www-form-urlencoded".to_string(),
+        );
         headers.insert("Content-Length".to_string(), body.len().to_string());
 
         let path_str = path.into();
@@ -210,7 +217,10 @@ impl HttpRequest {
     pub fn patch_form(path: impl Into<String>, form_data: HashMap<String, String>) -> Self {
         let body = encode_form_data(&form_data);
         let mut headers = HashMap::new();
-        headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+        headers.insert(
+            "Content-Type".to_string(),
+            "application/x-www-form-urlencoded".to_string(),
+        );
         headers.insert("Content-Length".to_string(), body.len().to_string());
 
         let path_str = path.into();
@@ -284,8 +294,11 @@ impl HttpRequest {
     /// This method parses application/x-www-form-urlencoded content.
     pub fn parse_form_data(&mut self) {
         // Check if this is a form content type
-        if let Some(content_type) = self.headers.get("content-type")
-            .or_else(|| self.headers.get("Content-Type")) {
+        if let Some(content_type) = self
+            .headers
+            .get("content-type")
+            .or_else(|| self.headers.get("Content-Type"))
+        {
             if content_type.starts_with("application/x-www-form-urlencoded") {
                 if let Ok(body_str) = std::str::from_utf8(&self.body) {
                     self.form_data = parse_form_string(body_str);
@@ -388,8 +401,14 @@ mod tests {
 
         assert_eq!(request.method, "POST");
         assert_eq!(request.path, "/login");
-        assert_eq!(request.query_params.get("next"), Some(&"dashboard".to_string()));
-        assert_eq!(request.headers.get("Content-Type"), Some(&"application/x-www-form-urlencoded".to_string()));
+        assert_eq!(
+            request.query_params.get("next"),
+            Some(&"dashboard".to_string())
+        );
+        assert_eq!(
+            request.headers.get("Content-Type"),
+            Some(&"application/x-www-form-urlencoded".to_string())
+        );
         assert!(request.headers.contains_key("Content-Length"));
         assert_eq!(request.form_data, form_data);
 

@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use serde::{Serialize, Deserialize};
+
+use serde::{Deserialize, Serialize};
 
 /// HTTP request structure compatible with DFIR streaming.
 #[derive(Debug, Clone)]

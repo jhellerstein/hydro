@@ -1,13 +1,15 @@
 //! Integration tests for HTTP module functionality.
 
 use std::collections::HashMap;
-use crate::util::{HttpRequest, HttpResponse, Cookie};
+
+use crate::util::{Cookie, HttpRequest, HttpResponse};
 
 #[test]
 fn test_dfir_http_processing_pattern() -> Result<(), Box<dyn std::error::Error>> {
     use std::net::SocketAddr;
-    use crate::{dfir_syntax, util::collect_ready};
-    use crate::util::HttpCodecError;
+
+    use crate::dfir_syntax;
+    use crate::util::{HttpCodecError, collect_ready};
 
     // Create test requests to inject (simulating what would come from bind_http_server)
     let test_requests = vec![
@@ -98,9 +100,7 @@ fn test_dfir_http_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
     println!("✅ HTTP request processing works correctly through DFIR pipeline!");
     println!("✅ This demonstrates the DFIR pattern for HTTP processing:");
     println!("   source_stream(request_recv) -> map(route_logic) -> for_each(send_response)");
-    println!(
-        "✅ For dest_sink examples, see examples/http_server.rs and examples/http_client.rs"
-    );
+    println!("✅ For dest_sink examples, see examples/http_server.rs and examples/http_client.rs");
 
     Ok(())
 }
@@ -108,8 +108,9 @@ fn test_dfir_http_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_dfir_cookie_processing_pattern() -> Result<(), Box<dyn std::error::Error>> {
     use std::net::SocketAddr;
-    use crate::{dfir_syntax, util::collect_ready};
-    use crate::util::HttpCodecError;
+
+    use crate::dfir_syntax;
+    use crate::util::{HttpCodecError, collect_ready};
 
     // Create test requests with cookies
     let test_requests = vec![
@@ -243,7 +244,7 @@ fn test_dfir_form_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
             "/register" => {
                 if let (Some(username), Some(email)) = (
                     request.get_form_field("username"),
-                    request.get_form_field("email")
+                    request.get_form_field("email"),
                 ) {
                     let user_data = serde_json::json!({
                         "username": username,
@@ -251,15 +252,19 @@ fn test_dfir_form_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
                         "terms_accepted": request.get_form_field("terms") == Some(&"accepted".to_string())
                     });
                     user_db.insert(username.clone(), user_data);
-                    
+
                     let mut resp = HttpResponse::created();
-                    resp.body = serde_json::to_vec(&serde_json::json!({"message": "User registered successfully"})).unwrap();
-                    resp.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                    resp.body = serde_json::to_vec(
+                        &serde_json::json!({"message": "User registered successfully"}),
+                    )
+                    .unwrap();
+                    resp.headers
+                        .insert("Content-Type".to_string(), "application/json".to_string());
                     resp
                 } else {
                     HttpResponse::bad_request()
                 }
-            },
+            }
             path if path.starts_with("/profile/") => {
                 let username = path.strip_prefix("/profile/").unwrap();
                 if let Some(mut user_data) = user_db.get(username).cloned() {
@@ -270,15 +275,16 @@ fn test_dfir_form_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
                         user_data["bio"] = serde_json::Value::String(bio.clone());
                     }
                     user_db.insert(username.to_string(), user_data.clone());
-                    
+
                     let mut resp = HttpResponse::ok();
                     resp.body = serde_json::to_vec(&user_data).unwrap();
-                    resp.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                    resp.headers
+                        .insert("Content-Type".to_string(), "application/json".to_string());
                     resp
                 } else {
                     HttpResponse::not_found()
                 }
-            },
+            }
             _ => HttpResponse::not_found(),
         };
         responses.push((response, request));
@@ -286,7 +292,7 @@ fn test_dfir_form_processing_pattern() -> Result<(), Box<dyn std::error::Error>>
 
     // Verify results
     assert_eq!(responses.len(), 2);
-    
+
     // Check registration response
     assert_eq!(responses[0].0.status_code, 201);
     let reg_body: serde_json::Value = serde_json::from_slice(&responses[0].0.body)?;

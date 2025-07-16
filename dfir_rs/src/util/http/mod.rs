@@ -120,23 +120,22 @@
 //! # }
 //! ```
 
-pub mod types;
-pub mod encoding;
+pub mod codec;
 pub mod cookie;
+pub mod encoding;
 pub mod request;
 pub mod response;
-pub mod codec;
+pub mod types;
 
 #[cfg(test)]
 /// Integration tests for HTTP functionality.
 pub mod tests;
 
 // Re-export the main types for backward compatibility
-pub use types::{HttpRequest, HttpResponse, HttpCodecError, Cookie, SameSite};
-pub use codec::{HttpCodec, HttpServerCodec, HttpClientCodec};
-
+pub use codec::{HttpClientCodec, HttpCodec, HttpServerCodec};
 // Import external dependencies needed by the implementations
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+pub use types::{Cookie, HttpCodecError, HttpRequest, HttpResponse, SameSite};
 
 // Implement Serialize/Deserialize for compatibility with existing code
 impl Serialize for HttpRequest {
@@ -163,8 +162,9 @@ impl<'de> Deserialize<'de> for HttpRequest {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
+
+        use serde::de::{self, MapAccess, Visitor};
 
         #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "snake_case")]
@@ -276,7 +276,16 @@ impl<'de> Deserialize<'de> for HttpRequest {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &["method", "path", "version", "headers", "body", "query_params", "cookies", "form_data"];
+        const FIELDS: &[&str] = &[
+            "method",
+            "path",
+            "version",
+            "headers",
+            "body",
+            "query_params",
+            "cookies",
+            "form_data",
+        ];
         deserializer.deserialize_struct("HttpRequest", FIELDS, HttpRequestVisitor)
     }
 }
@@ -303,8 +312,9 @@ impl<'de> Deserialize<'de> for HttpResponse {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
+
+        use serde::de::{self, MapAccess, Visitor};
 
         #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "snake_case")]
@@ -379,8 +389,10 @@ impl<'de> Deserialize<'de> for HttpResponse {
                 }
 
                 let version = version.ok_or_else(|| de::Error::missing_field("version"))?;
-                let status_code = status_code.ok_or_else(|| de::Error::missing_field("status_code"))?;
-                let status_text = status_text.ok_or_else(|| de::Error::missing_field("status_text"))?;
+                let status_code =
+                    status_code.ok_or_else(|| de::Error::missing_field("status_code"))?;
+                let status_text =
+                    status_text.ok_or_else(|| de::Error::missing_field("status_text"))?;
                 let headers = headers.ok_or_else(|| de::Error::missing_field("headers"))?;
                 let set_cookies = set_cookies.unwrap_or_default();
                 let body = body.ok_or_else(|| de::Error::missing_field("body"))?;
@@ -396,7 +408,14 @@ impl<'de> Deserialize<'de> for HttpResponse {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &["version", "status_code", "status_text", "headers", "set_cookies", "body"];
+        const FIELDS: &[&str] = &[
+            "version",
+            "status_code",
+            "status_text",
+            "headers",
+            "set_cookies",
+            "body",
+        ];
         deserializer.deserialize_struct("HttpResponse", FIELDS, HttpResponseVisitor)
     }
 }
@@ -426,8 +445,9 @@ impl<'de> Deserialize<'de> for Cookie {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
+
+        use serde::de::{self, MapAccess, Visitor};
 
         #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "snake_case")]
@@ -549,7 +569,17 @@ impl<'de> Deserialize<'de> for Cookie {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &["name", "value", "domain", "path", "max_age", "expires", "secure", "http_only", "same_site"];
+        const FIELDS: &[&str] = &[
+            "name",
+            "value",
+            "domain",
+            "path",
+            "max_age",
+            "expires",
+            "secure",
+            "http_only",
+            "same_site",
+        ];
         deserializer.deserialize_struct("Cookie", FIELDS, CookieVisitor)
     }
 }

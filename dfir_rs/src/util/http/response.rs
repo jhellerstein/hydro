@@ -1,8 +1,10 @@
 //! HTTP response handling and builder methods.
 
 use std::collections::HashMap;
+
 use serde::Serialize;
-use crate::util::http::types::{HttpResponse, Cookie};
+
+use crate::util::http::types::{Cookie, HttpResponse};
 
 impl HttpResponse {
     /// Create a simple 200 OK response.
