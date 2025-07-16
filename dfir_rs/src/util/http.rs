@@ -203,6 +203,8 @@ pub struct HttpRequest {
     pub query_params: HashMap<String, String>,
     /// Cookies parsed from the Cookie header
     pub cookies: HashMap<String, String>,
+    /// Form data parsed from application/x-www-form-urlencoded body
+    pub form_data: HashMap<String, String>,
     /// Request body (empty for methods like GET)
     pub body: Vec<u8>,
 }
@@ -428,6 +430,7 @@ impl HttpRequest {
             headers: HashMap::new(),
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -452,6 +455,7 @@ impl HttpRequest {
             headers,
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body,
         })
     }
@@ -471,6 +475,7 @@ impl HttpRequest {
             headers,
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body,
         }
     }
@@ -490,6 +495,7 @@ impl HttpRequest {
             headers,
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body,
         }
     }
@@ -509,6 +515,7 @@ impl HttpRequest {
             headers,
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body,
         }
     }
@@ -533,6 +540,7 @@ impl HttpRequest {
             headers,
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body,
         })
     }
@@ -549,6 +557,7 @@ impl HttpRequest {
             headers: HashMap::new(),
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -565,6 +574,7 @@ impl HttpRequest {
             headers: HashMap::new(),
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -581,6 +591,7 @@ impl HttpRequest {
             headers: HashMap::new(),
             query_params,
             cookies: HashMap::new(),
+            form_data: HashMap::new(),
             body: Vec::new(),
         }
     }
@@ -595,6 +606,66 @@ impl HttpRequest {
     pub fn with_query_param(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.query_params.insert(name.into(), value.into());
         self
+    }
+
+    /// Create a POST request with form data.
+    pub fn post_form(path: impl Into<String>, form_data: HashMap<String, String>) -> Self {
+        let body = Self::encode_form_data(&form_data);
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        let path_str = path.into();
+        let (clean_path, query_params) = Self::parse_query_params(&path_str);
+
+        Self {
+            method: "POST".to_string(),
+            path: clean_path,
+            version: "HTTP/1.1".to_string(),
+            headers,
+            query_params,
+            cookies: HashMap::new(),
+            form_data,
+            body,
+        }
+    }
+
+    /// Create a PATCH request with form data.
+    pub fn patch_form(path: impl Into<String>, form_data: HashMap<String, String>) -> Self {
+        let body = Self::encode_form_data(&form_data);
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+        headers.insert("Content-Length".to_string(), body.len().to_string());
+
+        let path_str = path.into();
+        let (clean_path, query_params) = Self::parse_query_params(&path_str);
+
+        Self {
+            method: "PATCH".to_string(),
+            path: clean_path,
+            version: "HTTP/1.1".to_string(),
+            headers,
+            query_params,
+            cookies: HashMap::new(),
+            form_data,
+            body,
+        }
+    }
+
+    /// Encode form data into application/x-www-form-urlencoded format.
+    fn encode_form_data(form_data: &HashMap<String, String>) -> Vec<u8> {
+        let encoded = form_data
+            .iter()
+            .map(|(k, v)| {
+                if v.is_empty() {
+                    Self::url_encode(k)
+                } else {
+                    format!("{}={}", Self::url_encode(k), Self::url_encode(v))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("&");
+        encoded.into_bytes()
     }
 
     /// Get a query parameter value by name.
@@ -635,6 +706,51 @@ impl HttpRequest {
     /// Check if a cookie exists.
     pub fn has_cookie(&self, name: &str) -> bool {
         self.cookies.contains_key(name)
+    }
+
+    /// Get a form field value by name.
+    pub fn get_form_field(&self, name: &str) -> Option<&String> {
+        self.form_data.get(name)
+    }
+
+    /// Check if a form field exists.
+    pub fn has_form_field(&self, name: &str) -> bool {
+        self.form_data.contains_key(name)
+    }
+
+    /// Parse form data from the request body.
+    /// This method parses application/x-www-form-urlencoded content.
+    pub fn parse_form_data(&mut self) {
+        // Check if this is a form content type
+        if let Some(content_type) = self.headers.get("content-type")
+            .or_else(|| self.headers.get("Content-Type")) {
+            if content_type.starts_with("application/x-www-form-urlencoded") {
+                if let Ok(body_str) = std::str::from_utf8(&self.body) {
+                    self.form_data = Self::parse_form_string(body_str);
+                }
+            }
+        }
+    }
+
+    /// Parse a form-encoded string into a HashMap.
+    fn parse_form_string(form_str: &str) -> HashMap<String, String> {
+        if form_str.is_empty() {
+            return HashMap::new();
+        }
+
+        form_str
+            .split('&')
+            .filter_map(|pair| {
+                if let Some(eq_pos) = pair.find('=') {
+                    let key = &pair[..eq_pos];
+                    let value = &pair[eq_pos + 1..];
+                    Some((Self::url_decode(key), Self::url_decode(value)))
+                } else {
+                    // Handle key without value
+                    Some((Self::url_decode(pair), String::new()))
+                }
+            })
+            .collect()
     }
 
     /// Simple URL encoding for query parameters
@@ -1026,6 +1142,22 @@ impl HttpCodec {
                     .map(|cookie_header| Cookie::parse_cookie_header(cookie_header))
                     .unwrap_or_else(HashMap::new);
 
+                // Parse form data from the body if it's form-encoded
+                let form_data = if let Some(content_type) = headers_map.get("content-type")
+                    .or_else(|| headers_map.get("Content-Type")) {
+                    if content_type.starts_with("application/x-www-form-urlencoded") {
+                        if let Ok(body_str) = std::str::from_utf8(&body) {
+                            HttpRequest::parse_form_string(body_str)
+                        } else {
+                            HashMap::new()
+                        }
+                    } else {
+                        HashMap::new()
+                    }
+                } else {
+                    HashMap::new()
+                };
+
                 Ok(Some(HttpRequest {
                     method,
                     path: clean_path,
@@ -1033,6 +1165,7 @@ impl HttpCodec {
                     headers: headers_map,
                     query_params,
                     cookies,
+                    form_data,
                     body,
                 }))
             }
@@ -2346,6 +2479,276 @@ mod tests {
 
         println!("✅ Cookie support working correctly through DFIR pipeline!");
         println!("✅ Supports: cookie parsing, authentication, session management, preferences");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_form_data_parsing() -> Result<(), Box<dyn std::error::Error>> {
+        // Test parsing simple form data
+        let form_data = HttpRequest::parse_form_string("name=John&age=30");
+        assert_eq!(form_data.get("name"), Some(&"John".to_string()));
+        assert_eq!(form_data.get("age"), Some(&"30".to_string()));
+
+        // Test URL encoded form data
+        let form_data = HttpRequest::parse_form_string("message=Hello%20World&special=%21%40%23");
+        assert_eq!(form_data.get("message"), Some(&"Hello World".to_string()));
+        assert_eq!(form_data.get("special"), Some(&"!@#".to_string()));
+
+        // Test empty value
+        let form_data = HttpRequest::parse_form_string("key1=value1&key2=&key3=value3");
+        assert_eq!(form_data.get("key1"), Some(&"value1".to_string()));
+        assert_eq!(form_data.get("key2"), Some(&"".to_string()));
+        assert_eq!(form_data.get("key3"), Some(&"value3".to_string()));
+
+        // Test key without value
+        let form_data = HttpRequest::parse_form_string("single_key&normal=value");
+        assert_eq!(form_data.get("single_key"), Some(&"".to_string()));
+        assert_eq!(form_data.get("normal"), Some(&"value".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_form_encoding() -> Result<(), Box<dyn std::error::Error>> {
+        let mut form_data = HashMap::new();
+        form_data.insert("name".to_string(), "John Doe".to_string());
+        form_data.insert("message".to_string(), "Hello, World!".to_string());
+        form_data.insert("empty".to_string(), "".to_string());
+
+        let encoded = HttpRequest::encode_form_data(&form_data);
+        let encoded_str = String::from_utf8(encoded)?;
+
+        println!("Encoded form data: {}", encoded_str);
+
+        // Should contain properly encoded data (HashMap iteration order is not guaranteed)
+        assert!(encoded_str.contains("name=John+Doe"));
+        assert!(encoded_str.contains("message=Hello%2C+World%21"));
+        assert!(encoded_str.contains("empty"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_post_form_creation() -> Result<(), Box<dyn std::error::Error>> {
+        let mut form_data = HashMap::new();
+        form_data.insert("username".to_string(), "user@example.com".to_string());
+        form_data.insert("password".to_string(), "secret123".to_string());
+
+        let request = HttpRequest::post_form("/login?next=dashboard", form_data.clone());
+
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.path, "/login");
+        assert_eq!(request.query_params.get("next"), Some(&"dashboard".to_string()));
+        assert_eq!(request.headers.get("Content-Type"), Some(&"application/x-www-form-urlencoded".to_string()));
+        assert!(request.headers.contains_key("Content-Length"));
+        assert_eq!(request.form_data, form_data);
+
+        // Check that body contains encoded form data
+        let body_str = String::from_utf8(request.body)?;
+        assert!(body_str.contains("username=user%40example.com"));
+        assert!(body_str.contains("password=secret123"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_patch_form_creation() -> Result<(), Box<dyn std::error::Error>> {
+        let mut form_data = HashMap::new();
+        form_data.insert("title".to_string(), "Updated Title".to_string());
+        form_data.insert("status".to_string(), "published".to_string());
+
+        let request = HttpRequest::patch_form("/api/posts/123", form_data.clone());
+
+        assert_eq!(request.method, "PATCH");
+        assert_eq!(request.path, "/api/posts/123");
+        assert_eq!(request.headers.get("Content-Type"), Some(&"application/x-www-form-urlencoded".to_string()));
+        assert_eq!(request.form_data, form_data);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_form_field_helpers() -> Result<(), Box<dyn std::error::Error>> {
+        let mut form_data = HashMap::new();
+        form_data.insert("field1".to_string(), "value1".to_string());
+        form_data.insert("field2".to_string(), "value2".to_string());
+
+        let request = HttpRequest::post_form("/submit", form_data);
+
+        // Test getter methods
+        assert_eq!(request.get_form_field("field1"), Some(&"value1".to_string()));
+        assert_eq!(request.get_form_field("field2"), Some(&"value2".to_string()));
+        assert_eq!(request.get_form_field("nonexistent"), None);
+
+        // Test existence check
+        assert!(request.has_form_field("field1"));
+        assert!(request.has_form_field("field2"));
+        assert!(!request.has_form_field("nonexistent"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_automatic_form_parsing() -> Result<(), Box<dyn std::error::Error>> {
+        let body = "name=John&email=john%40example.com";
+        let request_data = format!(
+            "POST /submit HTTP/1.1\r\n\
+             Host: example.com\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\n\
+             Content-Length: {}\r\n\
+             \r\n\
+             {}", body.len(), body);
+
+        let codec = HttpCodec::new();
+        if let Ok(Some(request)) = codec.parse_request(request_data.as_bytes()) {
+            assert_eq!(request.method, "POST");
+            assert_eq!(request.path, "/submit");
+            
+            // Form data should be automatically parsed
+            assert_eq!(request.get_form_field("name"), Some(&"John".to_string()));
+            assert_eq!(request.get_form_field("email"), Some(&"john@example.com".to_string()));
+            assert!(request.has_form_field("name"));
+            assert!(request.has_form_field("email"));
+        } else {
+            panic!("Failed to parse form request");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_manual_form_parsing() -> Result<(), Box<dyn std::error::Error>> {
+        let body = "user=admin&pass=secret&remember=true".as_bytes().to_vec();
+        let mut request = HttpRequest::post("/auth", body);
+        request.headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+
+        // Initially form_data should be empty
+        assert!(request.form_data.is_empty());
+
+        // Parse form data manually
+        request.parse_form_data();
+
+        // Now form_data should be populated
+        assert_eq!(request.get_form_field("user"), Some(&"admin".to_string()));
+        assert_eq!(request.get_form_field("pass"), Some(&"secret".to_string()));
+        assert_eq!(request.get_form_field("remember"), Some(&"true".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_form_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
+        // Test empty form data
+        let empty_form = HttpRequest::parse_form_string("");
+        assert!(empty_form.is_empty());
+
+        // Test single field
+        let single = HttpRequest::parse_form_string("key=value");
+        assert_eq!(single.get("key"), Some(&"value".to_string()));
+
+        // Test complex characters
+        let complex = HttpRequest::parse_form_string("data=%7B%22json%22%3A%22value%22%7D");
+        assert_eq!(complex.get("data"), Some(&"{\"json\":\"value\"}".to_string()));
+
+        // Test plus signs (spaces in forms)
+        let plus_form = HttpRequest::parse_form_string("message=hello+world");
+        // + should be decoded as space in form data
+        assert_eq!(plus_form.get("message"), Some(&"hello world".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_dfir_form_processing_pattern() -> Result<(), Box<dyn std::error::Error>> {
+        use std::collections::HashMap as StdHashMap;
+
+        // Simulate a DFIR processing pipeline with form data
+        let form_requests = vec![
+            // User registration
+            {
+                let mut form_data = HashMap::new();
+                form_data.insert("username".to_string(), "alice".to_string());
+                form_data.insert("email".to_string(), "alice@example.com".to_string());
+                form_data.insert("terms".to_string(), "accepted".to_string());
+                HttpRequest::post_form("/register", form_data)
+            },
+            // Profile update
+            {
+                let mut form_data = HashMap::new();
+                form_data.insert("name".to_string(), "Alice Smith".to_string());
+                form_data.insert("bio".to_string(), "Software Engineer".to_string());
+                HttpRequest::patch_form("/profile/alice", form_data)
+            },
+        ];
+
+        // Process through DFIR-style pipeline
+        let mut user_db = StdHashMap::<String, serde_json::Value>::new();
+        let mut responses = Vec::new();
+
+        for request in form_requests {
+            let response = match request.path.as_str() {
+                "/register" => {
+                    if let (Some(username), Some(email)) = (
+                        request.get_form_field("username"),
+                        request.get_form_field("email")
+                    ) {
+                        let user_data = serde_json::json!({
+                            "username": username,
+                            "email": email,
+                            "terms_accepted": request.get_form_field("terms") == Some(&"accepted".to_string())
+                        });
+                        user_db.insert(username.clone(), user_data);
+                        
+                        let mut resp = HttpResponse::created();
+                        resp.body = serde_json::to_vec(&serde_json::json!({"message": "User registered successfully"})).unwrap();
+                        resp.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                        resp
+                    } else {
+                        HttpResponse::bad_request()
+                    }
+                },
+                path if path.starts_with("/profile/") => {
+                    let username = path.strip_prefix("/profile/").unwrap();
+                    if let Some(mut user_data) = user_db.get(username).cloned() {
+                        if let Some(name) = request.get_form_field("name") {
+                            user_data["name"] = serde_json::Value::String(name.clone());
+                        }
+                        if let Some(bio) = request.get_form_field("bio") {
+                            user_data["bio"] = serde_json::Value::String(bio.clone());
+                        }
+                        user_db.insert(username.to_string(), user_data.clone());
+                        
+                        let mut resp = HttpResponse::ok();
+                        resp.body = serde_json::to_vec(&user_data).unwrap();
+                        resp.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                        resp
+                    } else {
+                        HttpResponse::not_found()
+                    }
+                },
+                _ => HttpResponse::not_found(),
+            };
+            responses.push((response, request));
+        }
+
+        // Verify results
+        assert_eq!(responses.len(), 2);
+        
+        // Check registration response
+        assert_eq!(responses[0].0.status_code, 201);
+        let reg_body: serde_json::Value = serde_json::from_slice(&responses[0].0.body)?;
+        assert_eq!(reg_body["message"], "User registered successfully");
+
+        // Check profile update response
+        assert_eq!(responses[1].0.status_code, 200);
+        let profile_body: serde_json::Value = serde_json::from_slice(&responses[1].0.body)?;
+        assert_eq!(profile_body["username"], "alice");
+        assert_eq!(profile_body["name"], "Alice Smith");
+        assert_eq!(profile_body["bio"], "Software Engineer");
+
+        println!("✅ Form URL encoding working correctly through DFIR pipeline!");
+        println!("✅ Supports: form parsing, POST/PATCH forms, field access, automatic parsing");
 
         Ok(())
     }
