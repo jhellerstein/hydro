@@ -1,12 +1,12 @@
 //! Debugging utilities for Hydro IR graph visualization.
-//! 
+//!
 //! Similar to the DFIR debugging utilities, this module provides convenient
 //! methods for opening graphs in web browsers and VS Code.
 
 use std::fmt::Write;
 use std::io::Result;
 
-use super::graph_render::{HydroWriteConfig, render_hydro_ir_mermaid, render_hydro_ir_dot};
+use super::graph_render::{HydroWriteConfig, render_hydro_ir_dot, render_hydro_ir_mermaid};
 use crate::ir::HydroLeaf;
 
 /// Debugging extensions for Hydro IR.
@@ -30,7 +30,11 @@ impl HydroLeaf {
     /// Saves this Hydro IR graph as a .mermaid file and opens it in VS Code for preview.
     /// Requires the "Mermaid Preview" extension in VS Code.
     #[cfg(feature = "debugging")]
-    pub fn open_mermaid_vscode(&self, filename: Option<&str>, config: Option<HydroWriteConfig>) -> Result<()> {
+    pub fn open_mermaid_vscode(
+        &self,
+        filename: Option<&str>,
+        config: Option<HydroWriteConfig>,
+    ) -> Result<()> {
         let config = config.unwrap_or_default();
         let mermaid_src = self.to_mermaid(&config);
         let filename = filename.unwrap_or("hydro_graph.mermaid");
@@ -40,7 +44,11 @@ impl HydroLeaf {
     /// Saves this Hydro IR graph as a .dot file and opens it in VS Code for preview.
     /// Requires a Graphviz extension in VS Code.
     #[cfg(feature = "debugging")]
-    pub fn open_dot_vscode(&self, filename: Option<&str>, config: Option<HydroWriteConfig>) -> Result<()> {
+    pub fn open_dot_vscode(
+        &self,
+        filename: Option<&str>,
+        config: Option<HydroWriteConfig>,
+    ) -> Result<()> {
         let config = config.unwrap_or_default();
         let dot_src = self.to_dot(&config);
         let filename = filename.unwrap_or("hydro_graph.dot");
@@ -66,16 +74,31 @@ pub fn open_hydro_ir_dot(leaves: &[HydroLeaf], config: Option<HydroWriteConfig>)
 
 /// Saves multiple Hydro IR leaves as a .mermaid file and opens it in VS Code.
 #[cfg(feature = "debugging")]
-pub fn open_hydro_ir_mermaid_vscode(leaves: &[HydroLeaf], filename: Option<&str>, config: Option<HydroWriteConfig>) -> Result<()> {
+pub fn open_hydro_ir_mermaid_vscode(
+    leaves: &[HydroLeaf],
+    filename: Option<&str>,
+    config: Option<HydroWriteConfig>,
+) -> Result<()> {
     let config = config.unwrap_or_default();
     let mermaid_src = render_hydro_ir_mermaid(leaves, &config);
     let filename = filename.unwrap_or("hydro_graph.mermaid");
-    save_and_open_vscode(&mermaid_src, filename)
+
+    // Save the file for reference
+    use std::fs;
+    fs::write(filename, &mermaid_src)?;
+    println!("Saved Mermaid graph to: {}", filename);
+
+    // Open in VS Code Simple Browser with preview
+    open_mermaid_vscode_browser(&mermaid_src)
 }
 
 /// Saves multiple Hydro IR leaves as a .dot file and opens it in VS Code.
 #[cfg(feature = "debugging")]
-pub fn open_hydro_ir_dot_vscode(leaves: &[HydroLeaf], filename: Option<&str>, config: Option<HydroWriteConfig>) -> Result<()> {
+pub fn open_hydro_ir_dot_vscode(
+    leaves: &[HydroLeaf],
+    filename: Option<&str>,
+    config: Option<HydroWriteConfig>,
+) -> Result<()> {
     let config = config.unwrap_or_default();
     let dot_src = render_hydro_ir_dot(leaves, &config);
     let filename = filename.unwrap_or("hydro_graph.dot");
@@ -84,7 +107,10 @@ pub fn open_hydro_ir_dot_vscode(leaves: &[HydroLeaf], filename: Option<&str>, co
 
 /// Opens a Mermaid diagram in VS Code's Simple Browser using mermaid.live.
 #[cfg(feature = "debugging")]
-pub fn open_hydro_ir_mermaid_simple_browser(leaves: &[HydroLeaf], config: Option<HydroWriteConfig>) -> Result<()> {
+pub fn open_hydro_ir_mermaid_simple_browser(
+    leaves: &[HydroLeaf],
+    config: Option<HydroWriteConfig>,
+) -> Result<()> {
     let config = config.unwrap_or_default();
     let mermaid_src = render_hydro_ir_mermaid(leaves, &config);
     open_mermaid_vscode_browser(&mermaid_src)
@@ -92,7 +118,10 @@ pub fn open_hydro_ir_mermaid_simple_browser(leaves: &[HydroLeaf], config: Option
 
 /// Opens a DOT diagram in VS Code's Simple Browser.
 #[cfg(feature = "debugging")]
-pub fn open_hydro_ir_dot_simple_browser(leaves: &[HydroLeaf], config: Option<HydroWriteConfig>) -> Result<()> {
+pub fn open_hydro_ir_dot_simple_browser(
+    leaves: &[HydroLeaf],
+    config: Option<HydroWriteConfig>,
+) -> Result<()> {
     let config = config.unwrap_or_default();
     let dot_src = render_hydro_ir_dot(leaves, &config);
     open_dot_vscode_browser(&dot_src)
@@ -134,20 +163,23 @@ fn save_and_open_vscode(content: &str, filename: &str) -> Result<()> {
 
     // Save the content to a file
     fs::write(filename, content)?;
-    
+
     // Try to open in VS Code
-    if let Ok(_) = Command::new("code")
-        .arg(filename)
-        .status() 
-    {
+    if Command::new("code").arg(filename).status().is_ok() {
         println!("Opened {} in VS Code", filename);
         println!("For Mermaid files: Install 'Mermaid Preview' extension");
         println!("For DOT files: Install 'Graphviz (dot) language support' extension");
         Ok(())
     } else {
         // Fall back to system default
-        webbrowser::open(&format!("file://{}", std::env::current_dir()?.join(filename).display()))?;
-        println!("VS Code not found, opened {} with default application", filename);
+        webbrowser::open(&format!(
+            "file://{}",
+            std::env::current_dir()?.join(filename).display()
+        ))?;
+        println!(
+            "VS Code not found, opened {} with default application",
+            filename
+        );
         Ok(())
     }
 }
@@ -168,11 +200,12 @@ fn open_mermaid_vscode_browser(mermaid_src: &str) -> Result<()> {
     let url = format!("https://mermaid.live/edit#{}", encoded);
 
     // Try to open in VS Code Simple Browser first
-    if let Ok(_) = Command::new("code")
+    if Command::new("code")
         .arg("--command")
         .arg("simpleBrowser.show")
         .arg(&url)
         .status()
+        .is_ok()
     {
         println!("Opened Mermaid diagram in VS Code Simple Browser");
         Ok(())
@@ -193,11 +226,12 @@ fn open_dot_vscode_browser(dot_src: &str) -> Result<()> {
     let url = format!("https://dreampuf.github.io/GraphvizOnline/#{}", encoded);
 
     // Try to open in VS Code Simple Browser first
-    if let Ok(_) = Command::new("code")
+    if Command::new("code")
         .arg("--command")
         .arg("simpleBrowser.show")
         .arg(&url)
         .status()
+        .is_ok()
     {
         println!("Opened DOT diagram in VS Code Simple Browser");
         Ok(())
@@ -211,20 +245,23 @@ fn open_dot_vscode_browser(dot_src: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ir::*;
     use quote::quote;
     use syn::parse_quote;
+
+    use super::*;
+    use crate::ir::*;
 
     #[test]
     fn test_mermaid_generation() {
         // Create a simple Hydro IR graph for testing
         let leaf = HydroLeaf::ForEach {
-            f: DebugExpr::from(parse_quote!(|x| println!("{}", x))),
+            f: DebugExpr::from(parse_quote!(|x: i32| println!("{}", x))),
             input: Box::new(HydroNode::Map {
                 f: DebugExpr::from(parse_quote!(|x| x * 2)),
                 input: Box::new(HydroNode::Source {
-                    source: HydroSource::Iter(DebugExpr::from(parse_quote!(vec![1, 2, 3].into_iter()))),
+                    source: HydroSource::Iter(DebugExpr::from(parse_quote!(
+                        vec![1, 2, 3].into_iter()
+                    ))),
                     location_kind: crate::location::LocationId::Process(0),
                     metadata: HydroIrMetadata {
                         location_kind: crate::location::LocationId::Process(0),
@@ -250,7 +287,7 @@ mod tests {
 
         let config = HydroWriteConfig::default();
         let mermaid = leaf.to_mermaid(&config);
-        
+
         // Basic checks that the output contains expected elements
         assert!(mermaid.contains("flowchart TD"));
         assert!(mermaid.contains("source_iter"));
@@ -301,7 +338,7 @@ mod tests {
 
         let config = HydroWriteConfig::default();
         let dot = leaf.to_dot(&config);
-        
+
         // Basic checks that the output contains expected elements
         assert!(dot.contains("digraph HydroIR"));
         assert!(dot.contains("source_stream"));
