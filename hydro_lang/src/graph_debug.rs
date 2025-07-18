@@ -74,25 +74,58 @@ pub fn open_hydro_ir_dot(leaves: &[HydroLeaf], config: Option<HydroWriteConfig>)
 
 /// Saves multiple Hydro IR leaves as a .mermaid file and opens it in VS Code.
 #[cfg(feature = "debugging")]
-pub fn open_hydro_ir_mermaid_vscode(
-    leaves: &[HydroLeaf],
-    filename: Option<&str>,
-    config: Option<HydroWriteConfig>,
-) -> Result<()> {
-    let config = config.unwrap_or_default();
-    let mermaid_src = render_hydro_ir_mermaid(leaves, &config);
-    let filename = filename.unwrap_or("hydro_graph.mermaid");
-
-    // Save the file for reference
-    use std::fs;
-    fs::write(filename, &mermaid_src)?;
-    println!("Saved Mermaid graph to: {}", filename);
-
-    // Open in VS Code Simple Browser with preview
-    open_mermaid_vscode_browser(&mermaid_src)
-}
-
-/// Saves multiple Hydro IR leaves as a .dot file and opens it in VS Code.
+pub fn open_hydro_ir_mermaid_vscode(leaves: &[HydroLeaf], filename: &str) -> Result<()> {
+    let config = HydroWriteConfig::default();
+    let mermaid_content = render_hydro_ir_mermaid(leaves, &config);
+    
+    // Write to file
+    std::fs::write(filename, mermaid_content)?;
+    
+    // Open the file in VS Code
+    let vscode_result = std::process::Command::new("code")
+        .arg(filename)
+        .status();
+    
+    match vscode_result {
+        Ok(status) if status.success() => {
+            println!("Opened {} in VS Code", filename);
+            println!("To view the Mermaid diagram:");
+            println!("  1. Press Ctrl+Shift+P (or Cmd+Shift+P on Mac)");
+            println!("  2. Search for 'Mermaid Preview'");
+            println!("  3. Select 'Mermaid Preview: Open Preview to the Side'");
+            println!("Or simply click the 'Open Preview to the Side' button in the top right of the editor.");
+            Ok(())
+        }
+        _ => {
+            // Fallback to browser
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            
+            let url = format!("https://mermaid.live/edit#{}", timestamp);
+            let result = std::process::Command::new("open")
+                .arg(&url)
+                .status();
+            
+            match result {
+                Ok(status) if status.success() => {
+                    println!("VS Code not available. Opened {} in browser at {}", filename, url);
+                    println!("Please copy the contents of {} and paste into the editor", filename);
+                    Ok(())
+                }
+                Ok(_) => {
+                    println!("Failed to open browser");
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to open browser"))
+                }
+                Err(e) => {
+                    println!("Failed to open Mermaid viewer: {}", e);
+                    Err(e)
+                }
+            }
+        }
+    }
+}/// Saves multiple Hydro IR leaves as a .dot file and opens it in VS Code.
 #[cfg(feature = "debugging")]
 pub fn open_hydro_ir_dot_vscode(
     leaves: &[HydroLeaf],
@@ -188,7 +221,9 @@ fn save_and_open_vscode(content: &str, filename: &str) -> Result<()> {
 #[cfg(feature = "debugging")]
 fn open_mermaid_vscode_browser(mermaid_src: &str) -> Result<()> {
     use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
+    // Create the standard mermaid.live state
     let state = serde_json::json!({
         "code": mermaid_src,
         "mermaid": {
@@ -197,7 +232,13 @@ fn open_mermaid_vscode_browser(mermaid_src: &str) -> Result<()> {
     });
     let state_str = state.to_string();
     let encoded = data_encoding::BASE64URL_NOPAD.encode(state_str.as_bytes());
-    let url = format!("https://mermaid.live/edit#{}", encoded);
+    
+    // Add timestamp as query parameter to avoid browser caching
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let url = format!("https://mermaid.live/edit#{}?v={}", encoded, timestamp);
 
     // Try to open in VS Code Simple Browser first
     if Command::new("code")

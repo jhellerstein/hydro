@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate graph visualization (do this before deployment to avoid ownership issues)
     #[cfg(feature = "debugging")]
-    open_hydro_ir_mermaid(built.ir(), None)?;
+    open_hydro_ir_mermaid_vscode(built.ir(), "chat_graph.mermaid")?;
 
     // Now use the built flow for deployment with optimization
     let _nodes = built
