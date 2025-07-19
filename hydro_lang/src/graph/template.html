@@ -209,15 +209,18 @@
             'Earth': ['#8b4513', '#a0522d', '#cd853f', '#daa520', '#b8860b', '#228b22', '#006400']
         };
         
-        const initialNodes = graphData.nodes || [];
+        // Remove sourcePosition/targetPosition from nodes for flexible edge attachment
+        const initialNodes = (graphData.nodes || []).map(node => {
+            const { sourcePosition, targetPosition, ...rest } = node;
+            return rest;
+        });
         const initialEdges = (graphData.edges || []).map(edge => {
-            // Create edge object without ANY handle specifications
-            // This allows ReactFlow to automatically calculate optimal connection points
+            // Use 'default' edge type for maximum flexibility
             const processedEdge = {
                 id: edge.id,
                 source: edge.source,
                 target: edge.target,
-                type: 'smoothstep',
+                type: 'default',
                 zIndex: 1000,
                 markerEnd: {
                     type: 'arrowclosed',
@@ -233,16 +236,10 @@
                 animated: edge.animated || false,
                 interactionWidth: 20
             };
-            
-            // Only add label properties if they exist
             if (edge.label) processedEdge.label = edge.label;
             if (edge.labelStyle) processedEdge.labelStyle = edge.labelStyle;
             if (edge.labelShowBg) processedEdge.labelShowBg = edge.labelShowBg;
             if (edge.labelBgStyle) processedEdge.labelBgStyle = edge.labelBgStyle;
-            
-            // CRITICAL: Do not set sourceHandle or targetHandle at all
-            // ReactFlow v11+ will automatically find optimal connection points
-            
             return processedEdge;
         });
 
@@ -1073,6 +1070,7 @@
                         deleteKeyCode={['Backspace', 'Delete']}
                         selectionKeyCode="Meta"
                         multiSelectionKeyCode="Meta"
+                        connectionLineType="bezier"
                     >
                         <Controls />
                         <MiniMap />
