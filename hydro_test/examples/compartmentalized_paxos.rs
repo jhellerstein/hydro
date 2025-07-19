@@ -93,7 +93,7 @@ async fn main() {
 
     // Generate and open the ReactFlow visualization AFTER optimization
     println!("Generated Hydro IR with {} leaves", optimized.ir().len());
-    if let Err(e) = hydro_lang::graph_debug::open_hydro_ir_reactflow_browser(
+    if let Err(e) = hydro_lang::graph::debug::open_hydro_ir_reactflow_browser(
         optimized.ir(),
         Some("compartmentalized_paxos_graph.html"),
         None,

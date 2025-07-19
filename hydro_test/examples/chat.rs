@@ -1,6 +1,6 @@
 use hydro_deploy::Deployment;
 use hydro_lang::deploy::TrybuildHost;
-use hydro_lang::graph_debug::*;
+use hydro_lang::graph::debug::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

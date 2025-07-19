@@ -367,6 +367,46 @@ impl HydroNode {
             }
         }
 
+        // Helper function to handle common location setup
+        fn setup_location(
+            structure: &mut HydroGraphStructure,
+            metadata: &crate::ir::HydroIrMetadata,
+        ) -> Option<usize> {
+            let (location_id, location_type) = extract_location_id(metadata);
+            if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
+                structure.add_location(loc_id, loc_type);
+            }
+            location_id
+        }
+
+        // Helper function for single-input transform nodes
+        fn build_single_input_transform(
+            structure: &mut HydroGraphStructure,
+            seen_tees: &mut HashMap<*const std::cell::RefCell<HydroNode>, usize>,
+            config: &HydroWriteConfig,
+            input: &HydroNode,
+            metadata: &crate::ir::HydroIrMetadata,
+            label: String,
+            node_type: HydroNodeType,
+            edge_type: HydroEdgeType,
+        ) -> usize {
+            let input_id = input.build_graph_structure(structure, seen_tees, config);
+            let location_id = setup_location(structure, metadata);
+            let node_id = structure.add_node(label, node_type, location_id);
+            structure.add_edge(input_id, node_id, edge_type, None);
+            node_id
+        }
+
+        // Helper function for source nodes
+        fn build_source_node(
+            structure: &mut HydroGraphStructure,
+            metadata: &crate::ir::HydroIrMetadata,
+            label: String,
+        ) -> usize {
+            let location_id = setup_location(structure, metadata);
+            structure.add_node(label, HydroNodeType::Source, location_id)
+        }
+
         match self {
             HydroNode::Placeholder => {
                 structure.add_node("PLACEHOLDER".to_string(), HydroNodeType::Transform, None)
@@ -375,34 +415,18 @@ impl HydroNode {
             HydroNode::Source {
                 source, metadata, ..
             } => {
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
                 let label = match source {
-                    HydroSource::Stream(expr) => {
-                        format!("source_stream({:?})", expr)
-                    }
+                    HydroSource::Stream(expr) => format!("source_stream({:?})", expr),
                     HydroSource::ExternalNetwork() => "external_network()".to_string(),
                     HydroSource::Iter(expr) => format!("source_iter({:?})", expr),
                     HydroSource::Spin() => "spin()".to_string(),
                 };
-                structure.add_node(label, HydroNodeType::Source, location_id)
+                build_source_node(structure, metadata, label)
             }
 
             HydroNode::CycleSource {
                 ident, metadata, ..
-            } => {
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                structure.add_node(
-                    format!("cycle_source({})", ident),
-                    HydroNodeType::Source,
-                    location_id,
-                )
-            }
+            } => build_source_node(structure, metadata, format!("cycle_source({})", ident)),
 
             HydroNode::Tee { inner, metadata } => {
                 let ptr = inner.as_ptr();
@@ -414,10 +438,8 @@ impl HydroNode {
                     .0
                     .borrow()
                     .build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
+                let location_id = setup_location(structure, metadata);
+
                 let tee_id = if config.include_tee_ids {
                     structure.add_node("tee()".to_string(), HydroNodeType::Tee, location_id)
                 } else {
@@ -432,65 +454,49 @@ impl HydroNode {
                 tee_id
             }
 
-            HydroNode::Persist { inner, metadata } => {
-                let input_id = inner.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                let persist_id = structure.add_node(
-                    "persist()".to_string(),
-                    HydroNodeType::Transform,
-                    location_id,
-                );
-                structure.add_edge(input_id, persist_id, HydroEdgeType::Persistent, None);
-                persist_id
-            }
+            HydroNode::Persist { inner, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                inner,
+                metadata,
+                "persist()".to_string(),
+                HydroNodeType::Transform,
+                HydroEdgeType::Persistent,
+            ),
 
-            HydroNode::Delta { inner, metadata } => {
-                let input_id = inner.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                let delta_id = structure.add_node(
-                    "delta()".to_string(),
-                    HydroNodeType::Transform,
-                    location_id,
-                );
-                structure.add_edge(input_id, delta_id, HydroEdgeType::Stream, None);
-                delta_id
-            }
+            HydroNode::Delta { inner, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                inner,
+                metadata,
+                "delta()".to_string(),
+                HydroNodeType::Transform,
+                HydroEdgeType::Stream,
+            ),
 
-            HydroNode::Map { f, input, metadata } => {
-                let input_id = input.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                let map_id = structure.add_node(
-                    format!("map({:?})", f),
-                    HydroNodeType::Transform,
-                    location_id,
-                );
-                structure.add_edge(input_id, map_id, HydroEdgeType::Stream, None);
-                map_id
-            }
+            HydroNode::Map { f, input, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                input,
+                metadata,
+                format!("map({:?})", f),
+                HydroNodeType::Transform,
+                HydroEdgeType::Stream,
+            ),
 
-            HydroNode::Filter { f, input, metadata } => {
-                let input_id = input.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                let filter_id = structure.add_node(
-                    format!("filter({:?})", f),
-                    HydroNodeType::Transform,
-                    location_id,
-                );
-                structure.add_edge(input_id, filter_id, HydroEdgeType::Stream, None);
-                filter_id
-            }
+            HydroNode::Filter { f, input, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                input,
+                metadata,
+                format!("filter({:?})", f),
+                HydroNodeType::Transform,
+                HydroEdgeType::Stream,
+            ),
 
             HydroNode::Join {
                 left,
@@ -499,10 +505,7 @@ impl HydroNode {
             } => {
                 let left_id = left.build_graph_structure(structure, seen_tees, config);
                 let right_id = right.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
+                let location_id = setup_location(structure, metadata);
                 let join_id =
                     structure.add_node("join()".to_string(), HydroNodeType::Join, location_id);
                 structure.add_edge(
@@ -525,20 +528,16 @@ impl HydroNode {
                 acc,
                 input,
                 metadata,
-            } => {
-                let input_id = input.build_graph_structure(structure, seen_tees, config);
-                let (location_id, location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
-                let fold_id = structure.add_node(
-                    format!("fold({:?}, {:?})", init, acc),
-                    HydroNodeType::Aggregation,
-                    location_id,
-                );
-                structure.add_edge(input_id, fold_id, HydroEdgeType::Stream, None);
-                fold_id
-            }
+            } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                input,
+                metadata,
+                format!("fold({:?}, {:?})", init, acc),
+                HydroNodeType::Aggregation,
+                HydroEdgeType::Stream,
+            ),
 
             HydroNode::Network {
                 to_location,
@@ -549,10 +548,7 @@ impl HydroNode {
                 ..
             } => {
                 let input_id = input.build_graph_structure(structure, seen_tees, config);
-                let (from_location_id, from_location_type) = extract_location_id(metadata);
-                if let (Some(loc_id), Some(loc_type)) = (from_location_id, from_location_type) {
-                    structure.add_location(loc_id, loc_type);
-                }
+                let _from_location_id = setup_location(structure, metadata);
 
                 let to_location_id = match to_location {
                     LocationId::Process(id) => {
@@ -592,59 +588,45 @@ impl HydroNode {
                 network_id
             }
 
-            // Handle all other node types with similar pattern
+            // Handle remaining node types
+            HydroNode::FlatMap { f, input, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                input,
+                metadata,
+                format!("flat_map({:?})", f),
+                HydroNodeType::Transform,
+                HydroEdgeType::Stream,
+            ),
+
+            HydroNode::FilterMap { f, input, metadata } => build_single_input_transform(
+                structure,
+                seen_tees,
+                config,
+                input,
+                metadata,
+                format!("filter_map({:?})", f),
+                HydroNodeType::Transform,
+                HydroEdgeType::Stream,
+            ),
+
+            HydroNode::Unpersist { inner, .. } => {
+                // Unpersist is typically optimized away, just pass through
+                inner.build_graph_structure(structure, seen_tees, config)
+            }
+
             _ => {
-                // This is a temporary catch-all for remaining node types
-                // In a real implementation, you'd want to handle each specifically
-                match self {
-                    HydroNode::FlatMap { f, input, metadata } => {
-                        let input_id = input.build_graph_structure(structure, seen_tees, config);
-                        let (location_id, location_type) = extract_location_id(metadata);
-                        if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                            structure.add_location(loc_id, loc_type);
-                        }
-                        let node_id = structure.add_node(
-                            format!("flat_map({:?})", f),
-                            HydroNodeType::Transform,
-                            location_id,
-                        );
-                        structure.add_edge(input_id, node_id, HydroEdgeType::Stream, None);
-                        node_id
-                    }
-
-                    HydroNode::FilterMap { f, input, metadata } => {
-                        let input_id = input.build_graph_structure(structure, seen_tees, config);
-                        let (location_id, location_type) = extract_location_id(metadata);
-                        if let (Some(loc_id), Some(loc_type)) = (location_id, location_type) {
-                            structure.add_location(loc_id, loc_type);
-                        }
-                        let node_id = structure.add_node(
-                            format!("filter_map({:?})", f),
-                            HydroNodeType::Transform,
-                            location_id,
-                        );
-                        structure.add_edge(input_id, node_id, HydroEdgeType::Stream, None);
-                        node_id
-                    }
-
-                    HydroNode::Unpersist { inner, .. } => {
-                        // Unpersist is typically optimized away, just pass through
-                        inner.build_graph_structure(structure, seen_tees, config)
-                    }
-
-                    _ => {
-                        // For truly unhandled cases, create a basic node
-                        structure.add_node(
-                            format!("{:?}", self)
-                                .split(' ')
-                                .next()
-                                .unwrap_or("unknown")
-                                .to_string(),
-                            HydroNodeType::Transform,
-                            None,
-                        )
-                    }
-                }
+                // For truly unhandled cases, create a basic node
+                structure.add_node(
+                    format!("{:?}", self)
+                        .split(' ')
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    HydroNodeType::Transform,
+                    None,
+                )
             }
         }
     }

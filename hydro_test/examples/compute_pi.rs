@@ -44,9 +44,11 @@ async fn main() {
     // Generate graph visualization if debugging features are enabled
     #[cfg(feature = "debugging")]
     graph_viz::visualize_hydro_ir();
-    
+
     #[cfg(not(feature = "debugging"))]
-    println!("💡 Tip: Run with --features debugging for graph visualization!\n   cargo run --example compute_pi --features debugging");
+    println!(
+        "💡 Tip: Run with --features debugging for graph visualization!\n   cargo run --example compute_pi --features debugging"
+    );
 
     let _nodes = builder
         .with_process(
@@ -65,29 +67,34 @@ async fn main() {
 // Graph visualization functionality
 #[cfg(feature = "debugging")]
 mod graph_viz {
-    use hydro_lang::graph_debug::{open_hydro_ir_mermaid_vscode, open_hydro_ir_mermaid_simple_browser};
-    use hydro_lang::graph_render::{render_hydro_ir_mermaid, render_hydro_ir_dot, HydroWriteConfig};
+    use hydro_lang::graph::debug::{
+        open_hydro_ir_mermaid_simple_browser, open_hydro_ir_mermaid_vscode,
+    };
+    use hydro_lang::graph::render::{
+        HydroWriteConfig, render_hydro_ir_dot, render_hydro_ir_mermaid,
+    };
     use hydro_lang::ir::HydroLeaf;
 
     pub fn visualize_hydro_ir() {
         println!("=== 🎨 Hydro IR Graph Visualization ===");
-        
+
         // Get the finalized Hydro IR by finalizing a temporary builder
         let built_flow = {
             let temp_builder = hydro_lang::FlowBuilder::new();
-            let (_temp_cluster, _temp_leader) = hydro_test::cluster::compute_pi::compute_pi(&temp_builder, 8192);
+            let (_temp_cluster, _temp_leader) =
+                hydro_test::cluster::compute_pi::compute_pi(&temp_builder, 8192);
             temp_builder.finalize()
         };
-        
+
         let hydro_ir_leaves = built_flow.ir();
-        
+
         // Generate visualizations
         let config = HydroWriteConfig {
             show_metadata: true,
             show_location_groups: true,
             include_tee_ids: true,
         };
-        
+
         generate_and_save_graphs(hydro_ir_leaves, &config);
         open_in_vscode(hydro_ir_leaves, &config);
         print_statistics(hydro_ir_leaves, &config);
@@ -96,10 +103,10 @@ mod graph_viz {
     fn generate_and_save_graphs(leaves: &Vec<HydroLeaf>, config: &HydroWriteConfig) {
         let mermaid_output = render_hydro_ir_mermaid(leaves, config);
         let dot_output = render_hydro_ir_dot(leaves, config);
-        
+
         std::fs::write("compute_pi_graph.mermaid", &mermaid_output).unwrap();
         std::fs::write("compute_pi_graph.dot", &dot_output).unwrap();
-        
+
         println!("📄 Saved graphs:");
         println!("  - compute_pi_graph.mermaid (interactive Mermaid diagram)");
         println!("  - compute_pi_graph.dot (Graphviz DOT format)");
@@ -107,12 +114,16 @@ mod graph_viz {
 
     fn open_in_vscode(leaves: &Vec<HydroLeaf>, config: &HydroWriteConfig) {
         println!("\n🚀 Opening in VS Code...");
-        
-        match open_hydro_ir_mermaid_vscode(leaves, Some("compute_pi_interactive.mermaid"), Some(config.clone())) {
+
+        match open_hydro_ir_mermaid_vscode(
+            leaves,
+            Some("compute_pi_interactive.mermaid"),
+            Some(config.clone()),
+        ) {
             Ok(_) => println!("✅ Opened Mermaid graph in VS Code (use Ctrl+Shift+V for preview)"),
             Err(e) => println!("⚠️  Could not open in VS Code: {}", e),
         }
-        
+
         match open_hydro_ir_mermaid_simple_browser(leaves, Some(config.clone())) {
             Ok(_) => println!("✅ Opened graph in VS Code Simple Browser"),
             Err(e) => println!("⚠️  Could not open in Simple Browser: {}", e),
@@ -122,18 +133,20 @@ mod graph_viz {
     fn print_statistics(leaves: &Vec<HydroLeaf>, config: &HydroWriteConfig) {
         let mermaid_output = render_hydro_ir_mermaid(leaves, config);
         let dot_output = render_hydro_ir_dot(leaves, config);
-        
+
         println!("\n📊 Graph Statistics:");
         println!("  - Total IR leaves: {}", leaves.len());
-        println!("  - Mermaid output: {} lines", mermaid_output.lines().count());
+        println!(
+            "  - Mermaid output: {} lines",
+            mermaid_output.lines().count()
+        );
         println!("  - DOT output: {} lines", dot_output.lines().count());
-        
+
         println!("\n🌐 View online:");
         println!("  - Mermaid: Copy content to https://mermaid.live");
         println!("  - DOT: Copy content to https://dreampuf.github.io/GraphvizOnline/");
     }
 }
-
 
 #[test]
 fn test() {
