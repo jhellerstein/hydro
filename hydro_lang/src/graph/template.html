@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hydro IR Graph - ReactFlow.js</title>
-    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/reactflow@11.11.0/dist/umd/index.js"></script>
+    <script src="https://unpkg.com/@xyflow/react@12.8.2/dist/umd/index.js"></script>
     <script src="https://unpkg.com/elkjs@0.8.2/lib/elk.bundled.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.0/dist/style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.8.2/dist/style.css" />
     <style>
         body {
             margin: 0;
@@ -169,37 +169,82 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useCallback, useRef, useEffect } = React;
+        // ReactFlow v12+ components via @xyflow/react
         const ReactFlowLib = window.ReactFlow;
         const { ReactFlow, Controls, MiniMap, Background, useNodesState, useEdgesState, addEdge, applyNodeChanges, applyEdgeChanges } = ReactFlowLib;
         
         const graphData = {{GRAPH_DATA}};
         
-        // ColorBrewer palettes
+        // ColorBrewer palettes - expanded collection with various aesthetics
         const colorPalettes = {
+            // Qualitative palettes (great for categorical data)
             'Set3': ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69'],
             'Pastel1': ['#fbb4ae', '#b3cde3', '#ccebc5', '#decbe4', '#fed9a6', '#ffffcc', '#e5d8bd'],
+            'Pastel2': ['#b3e2cd', '#fdcdac', '#cbd5e8', '#f4cae4', '#e6f5c9', '#fff2ae', '#f1e2cc'],
+            'Set1': ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628'],
+            'Set2': ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854', '#ffd92f', '#e5c494'],
             'Dark2': ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d'],
             'Accent': ['#7fc97f', '#beaed4', '#fdc086', '#ffff99', '#386cb0', '#f0027f', '#bf5b17'],
-            'Spectral': ['#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4']
+            'Paired': ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f'],
+            
+            // Sequential palettes (good for intensity/hierarchy)
+            'Blues': ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5'],
+            'Greens': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45'],
+            'Oranges': ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801'],
+            'Purples': ['#fcfbfd', '#efedf5', '#dadaeb', '#bcbddc', '#9e9ac8', '#807dba', '#6a51a3'],
+            'Reds': ['#fff5f0', '#fee0d2', '#fcbba1', '#fc9272', '#fb6a4a', '#ef3b2c', '#cb181d'],
+            
+            // Diverging palettes (great for showing contrasts)
+            'Spectral': ['#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4'],
+            'RdYlBu': ['#d73027', '#f46d43', '#fdae61', '#fee090', '#e0f3f8', '#abd9e9', '#74add1'],
+            'RdYlGn': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63'],
+            'PiYG': ['#d01c8b', '#f1b6da', '#fde0ef', '#f7f7f7', '#e6f5d0', '#b8e186', '#4d9221'],
+            'BrBG': ['#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#c7eae5', '#80cdc1', '#35978f'],
+            
+            // Modern/trendy palettes
+            'Viridis': ['#440154', '#482777', '#3f4a8a', '#31678e', '#26838f', '#1f9d8a', '#6cce5a'],
+            'Plasma': ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921', '#fcffa4'],
+            'Warm': ['#375a7f', '#5bc0de', '#5cb85c', '#f0ad4e', '#d9534f', '#ad4e92', '#6f5499'],
+            'Cool': ['#2c3e50', '#3498db', '#1abc9c', '#16a085', '#27ae60', '#2980b9', '#8e44ad'],
+            'Earth': ['#8b4513', '#a0522d', '#cd853f', '#daa520', '#b8860b', '#228b22', '#006400']
         };
         
         const initialNodes = graphData.nodes || [];
-        const initialEdges = (graphData.edges || []).map(edge => ({
-            ...edge,
-            zIndex: 1000,
-            markerEnd: {
-                type: 'arrowclosed',
-                width: 20,
-                height: 20,
-                color: '#666666'
-            },
-            style: {
-                ...edge.style,
-                strokeWidth: 2,
-                stroke: '#666666'
-            },
-            interactionWidth: 20
-        }));
+        const initialEdges = (graphData.edges || []).map(edge => {
+            // Create edge object without ANY handle specifications
+            // This allows ReactFlow to automatically calculate optimal connection points
+            const processedEdge = {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: 'smoothstep',
+                zIndex: 1000,
+                markerEnd: {
+                    type: 'arrowclosed',
+                    width: 20,
+                    height: 20,
+                    color: edge.style?.stroke || '#666666'
+                },
+                style: {
+                    strokeWidth: edge.style?.strokeWidth || 2,
+                    stroke: edge.style?.stroke || '#666666',
+                    strokeDasharray: edge.style?.strokeDasharray
+                },
+                animated: edge.animated || false,
+                interactionWidth: 20
+            };
+            
+            // Only add label properties if they exist
+            if (edge.label) processedEdge.label = edge.label;
+            if (edge.labelStyle) processedEdge.labelStyle = edge.labelStyle;
+            if (edge.labelShowBg) processedEdge.labelShowBg = edge.labelShowBg;
+            if (edge.labelBgStyle) processedEdge.labelBgStyle = edge.labelBgStyle;
+            
+            // CRITICAL: Do not set sourceHandle or targetHandle at all
+            // ReactFlow v11+ will automatically find optimal connection points
+            
+            return processedEdge;
+        });
 
         // elk.js layout configuration with hierarchical support
         const elkLayouts = {
@@ -261,9 +306,13 @@
             // Create gradient colors
             const primary = baseColor;
             const secondary = lightenColor(baseColor, 20);
+            const tertiary = lightenColor(baseColor, 35);
             const border = darkenColor(baseColor, 10);
             
-            return { primary, secondary, border };
+            // Create a gentle linear gradient
+            const gradient = `linear-gradient(135deg, ${tertiary} 0%, ${secondary} 50%, ${primary} 100%)`;
+            
+            return { primary, secondary, tertiary, border, gradient };
         };
         
         // Helper functions for color manipulation
@@ -484,6 +533,9 @@
                         ...node,
                         style: {
                             ...node.style,
+                            background: colors.gradient,
+                            border: `1px solid ${colors.border}`,
+                            // Remove the fixed gradients that were in the data
                             '--node-color-primary': colors.primary,
                             '--node-color-secondary': colors.secondary,
                             '--node-border-color': colors.border,
@@ -843,6 +895,8 @@
                         ...node,
                         style: {
                             ...node.style,
+                            background: colors.gradient,
+                            border: `1px solid ${colors.border}`,
                             '--node-color-primary': colors.primary,
                             '--node-color-secondary': colors.secondary,
                             '--node-border-color': colors.border,
@@ -919,12 +973,41 @@
                             value={currentPalette} 
                             onChange={handlePaletteChange}
                             title="Color Palette"
+                            style={{width: '120px'}}
                         >
-                            <option value="Set3">Set3</option>
-                            <option value="Pastel1">Pastel1</option>
-                            <option value="Dark2">Dark2</option>
-                            <option value="Accent">Accent</option>
-                            <option value="Spectral">Spectral</option>
+                            <optgroup label="🎨 Soft & Friendly">
+                                <option value="Set3">Set3 (Default)</option>
+                                <option value="Pastel1">Pastel1</option>
+                                <option value="Pastel2">Pastel2</option>
+                                <option value="Set2">Set2</option>
+                            </optgroup>
+                            <optgroup label="🔥 Bold & Vibrant">
+                                <option value="Set1">Set1</option>
+                                <option value="Dark2">Dark2</option>
+                                <option value="Accent">Accent</option>
+                                <option value="Paired">Paired</option>
+                            </optgroup>
+                            <optgroup label="🌊 Sequential">
+                                <option value="Blues">Blues</option>
+                                <option value="Greens">Greens</option>
+                                <option value="Oranges">Oranges</option>
+                                <option value="Purples">Purples</option>
+                                <option value="Reds">Reds</option>
+                            </optgroup>
+                            <optgroup label="⚖️ Diverging">
+                                <option value="Spectral">Spectral</option>
+                                <option value="RdYlBu">Red-Yellow-Blue</option>
+                                <option value="RdYlGn">Red-Yellow-Green</option>
+                                <option value="PiYG">Pink-Yellow-Green</option>
+                                <option value="BrBG">Brown-Blue-Green</option>
+                            </optgroup>
+                            <optgroup label="🚀 Modern">
+                                <option value="Viridis">Viridis</option>
+                                <option value="Plasma">Plasma</option>
+                                <option value="Warm">Warm Tones</option>
+                                <option value="Cool">Cool Tones</option>
+                                <option value="Earth">Earth Tones</option>
+                            </optgroup>
                         </select>
                     </div>
 
@@ -980,18 +1063,39 @@
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
                         onInit={onInit}
+                        // Connection settings for flexible edge connections
                         connectionMode="loose"
                         connectionLineType="smoothstep"
+                        connectionRadius={30}
+                        // Edge configuration
                         defaultEdgeOptions={{
                             type: 'smoothstep',
                             animated: false,
                             style: { strokeWidth: 2 }
+                            // IMPORTANT: No sourceHandle/targetHandle specified here either
                         }}
                         elevateEdgesOnSelect={true}
-                        edgesReconnectable={false}
+                        edgesReconnectable={true}
+                        reconnectRadius={20}
+                        // Node interaction
+                        nodesDraggable={true}
+                        nodesConnectable={true}
+                        elementsSelectable={true}
+                        selectNodesOnDrag={false}
+                        // Viewport settings  
                         fitView
+                        fitViewOptions={{ padding: 0.1 }}
                         snapToGrid={false}
                         snapGrid={[15, 15]}
+                        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                        attributionPosition="bottom-left"
+                        // Interaction
+                        connectOnClick={true}
+                        panOnDrag={true}
+                        // Remove constraints that might limit flexibility
+                        deleteKeyCode={['Backspace', 'Delete']}
+                        selectionKeyCode={['Meta', 'Ctrl']}
+                        multiSelectionKeyCode={['Meta', 'Ctrl']}
                     >
                         <Controls />
                         <MiniMap />

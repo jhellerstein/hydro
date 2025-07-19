@@ -27,33 +27,31 @@ impl<W> HydroReactFlow<W> {
     }
 
     fn node_type_to_style(&self, node_type: HydroNodeType) -> serde_json::Value {
-        // Base template for all nodes
+        // Base template for all nodes with modern card styling
         let base_style = serde_json::json!({
-            "color": "#000000",
-            "border": "2px solid #000000",
-            "borderRadius": "8px",
-            "padding": "8px",
-            "fontSize": "12px",
-            "fontFamily": "monospace"
+            "color": "#2d3748",
+            "border": "1px solid rgba(0, 0, 0, 0.1)",
+            "borderRadius": "12px",
+            "padding": "12px 16px",
+            "fontSize": "13px",
+            "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+            "fontWeight": "500",
+            "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+            "transition": "all 0.2s ease-in-out"
         });
 
-        // Only specify the background colors that differ
-        let background_color = match node_type {
-            HydroNodeType::Source => "#88ff88",
-            HydroNodeType::Transform => "#8888ff",
-            HydroNodeType::Join => "#ff8888",
-            HydroNodeType::Aggregation => "#ffff88",
-            HydroNodeType::Network => "#88ffff",
-            HydroNodeType::Sink => "#ff88ff",
-            HydroNodeType::Tee => "#dddddd",
-        };
-
-        // Merge the background color with the base template
+        // Store node type for the frontend ColorBrewer system to use
+        // The actual colors will be applied dynamically by the JavaScript based on the selected palette
         let mut style = base_style;
-        style["backgroundColor"] = serde_json::Value::String(background_color.to_string());
+
+        // Add hover effect styling
+        style["&:hover"] = serde_json::json!({
+            "transform": "translateY(-2px)",
+            "boxShadow": "0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
+        });
+
         style
     }
-
     fn edge_type_to_style(&self, edge_type: HydroEdgeType) -> serde_json::Value {
         // Base template for all edges
         let mut style = serde_json::json!({
@@ -215,7 +213,16 @@ where
                 "fullLabel": enhanced_full_label,
                 "expanded": false,
                 "locationId": location_id,
-                "locationType": location_type
+                "locationType": location_type,
+                "nodeType": match node_type {
+                    HydroNodeType::Source => "Source",
+                    HydroNodeType::Transform => "Transform",
+                    HydroNodeType::Join => "Join",
+                    HydroNodeType::Aggregation => "Aggregation",
+                    HydroNodeType::Network => "Network",
+                    HydroNodeType::Sink => "Sink",
+                    HydroNodeType::Tee => "Tee",
+                }
             },
             "position": {
                 "x": 0,
