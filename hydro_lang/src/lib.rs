@@ -56,9 +56,7 @@ pub use builder::FlowBuilder;
 
 pub mod ir;
 
-pub mod graph_render;
-
-pub mod graph_debug;
+pub mod graph;
 
 pub mod rewrites;
 

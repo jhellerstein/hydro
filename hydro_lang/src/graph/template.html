@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydro IR Graph - ReactFlow.js</title>
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.0/dist/umd/index.js"></script>
+    <script src="https://unpkg.com/elkjs@0.8.2/lib/elk.bundled.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.0/dist/style.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .reactflow-wrapper {
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Compact unified legend in upper right */
+        .unified-legend {
+            position: absolute;
+            top: 60px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            max-width: 220px;
+            font-size: 11px;
+        }
+        /* Layout controls above legend */
+        .layout-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .unified-legend h4 {
+            margin: 0 0 6px 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 3px;
+        }
+        .legend-section {
+            margin-bottom: 8px;
+        }
+        .legend-section:last-child {
+            margin-bottom: 0;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 3px 0;
+            font-size: 10px;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            margin-right: 6px;
+            border: 1px solid #666;
+            flex-shrink: 0;
+        }
+        .location-legend-color {
+            width: 16px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 6px;
+            border: 1px solid;
+            flex-shrink: 0;
+        }
+        .icon-button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 4px;
+            background: #f8f9fa;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #495057;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        .icon-button:hover {
+            background: #e9ecef;
+            color: #212529;
+            transform: translateY(-1px);
+        }
+        .icon-button:active {
+            transform: translateY(0);
+        }
+        .layout-select, .palette-select {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 11px;
+            padding: 4px 6px;
+            width: 80px;
+            color: #495057;
+        }
+        .layout-select:hover, .palette-select:hover {
+            border-color: #adb5bd;
+        }
+        /* Tooltip styles */
+        .tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            margin-bottom: 4px;
+        }
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 4px solid transparent;
+            border-top-color: #333;
+        }
+        .icon-button:hover .tooltip {
+            opacity: 1;
+        }
+        .react-flow__node {
+            cursor: pointer;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        .react-flow__node:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useCallback, useRef, useEffect } = React;
+        const ReactFlowLib = window.ReactFlow;
+        const { ReactFlow, Controls, MiniMap, Background, useNodesState, useEdgesState, addEdge, applyNodeChanges, applyEdgeChanges } = ReactFlowLib;
+        
+        const graphData = {{GRAPH_DATA}};
+        
+        // ColorBrewer palettes
+        const colorPalettes = {
+            'Set3': ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69'],
+            'Pastel1': ['#fbb4ae', '#b3cde3', '#ccebc5', '#decbe4', '#fed9a6', '#ffffcc', '#e5d8bd'],
+            'Dark2': ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d'],
+            'Accent': ['#7fc97f', '#beaed4', '#fdc086', '#ffff99', '#386cb0', '#f0027f', '#bf5b17'],
+            'Spectral': ['#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4']
+        };
+        
+        const initialNodes = graphData.nodes || [];
+        const initialEdges = (graphData.edges || []).map(edge => ({
+            ...edge,
+            zIndex: 1000,
+            markerEnd: {
+                type: 'arrowclosed',
+                width: 20,
+                height: 20,
+                color: '#666666'
+            },
+            style: {
+                ...edge.style,
+                strokeWidth: 2,
+                stroke: '#666666'
+            },
+            interactionWidth: 20
+        }));
+
+        // elk.js layout configuration with hierarchical support
+        const elkLayouts = {
+            layered: {
+                'elk.algorithm': 'layered',
+                'elk.layered.spacing.nodeNodeBetweenLayers': 100,
+                'elk.spacing.nodeNode': 80,
+                'elk.direction': 'RIGHT',
+                'elk.layered.thoroughness': 7,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            },
+            force: {
+                'elk.algorithm': 'force',
+                'elk.force.repulsivePower': 0.5,
+                'elk.spacing.nodeNode': 100,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            },
+            stress: {
+                'elk.algorithm': 'stress',
+                'elk.stress.desiredEdgeLength': 100,
+                'elk.spacing.nodeNode': 80,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            },
+            mrtree: {
+                'elk.algorithm': 'mrtree',
+                'elk.mrtree.searchOrder': 'DFS',
+                'elk.spacing.nodeNode': 80,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            },
+            radial: {
+                'elk.algorithm': 'radial',
+                'elk.radial.radius': 200,
+                'elk.spacing.nodeNode': 80,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            },
+            disco: {
+                'elk.algorithm': 'disco',
+                'elk.disco.componentCompaction.strategy': 'POLYOMINO',
+                'elk.spacing.nodeNode': 80,
+                'elk.hierarchyHandling': 'INCLUDE_CHILDREN'
+            }
+        };
+
+        // Generate colors based on selected palette
+        const generateNodeColors = (nodeType, palette = 'Set3') => {
+            const colors = colorPalettes[palette];
+            const typeMap = {
+                'Source': 0,
+                'Transform': 1,
+                'Join': 2,
+                'Aggregation': 3,
+                'Network': 4,
+                'Sink': 5,
+                'Tee': 6
+            };
+            
+            const baseColor = colors[typeMap[nodeType] || 0];
+            
+            // Create gradient colors
+            const primary = baseColor;
+            const secondary = lightenColor(baseColor, 20);
+            const border = darkenColor(baseColor, 10);
+            
+            return { primary, secondary, border };
+        };
+        
+        // Helper functions for color manipulation
+        const lightenColor = (color, percent) => {
+            // Simple lightening - convert hex to HSL, increase lightness, convert back
+            const num = parseInt(color.replace("#", ""), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = (num >> 16) + amt;
+            const G = (num >> 8 & 0x00FF) + amt;
+            const B = (num & 0x0000FF) + amt;
+            return "#" + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+                (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+                (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+        };
+        
+        const darkenColor = (color, percent) => {
+            const num = parseInt(color.replace("#", ""), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = (num >> 16) - amt;
+            const G = (num >> 8 & 0x00FF) - amt;
+            const B = (num & 0x0000FF) - amt;
+            return "#" + (0x1000000 + (R > 255 ? 255 : R < 0 ? 0 : R) * 0x10000 +
+                (G > 255 ? 255 : G < 0 ? 0 : G) * 0x100 +
+                (B > 255 ? 255 : B < 0 ? 0 : B)).toString(16).slice(1);
+        };
+
+        // Generate unique colors for each location ID
+        const generateLocationColor = (locationId, totalLocations, palette = 'Set3') => {
+            const colors = colorPalettes[palette];
+            const color = colors[locationId % colors.length];
+            const num = parseInt(color.replace("#", ""), 16);
+            
+            // Make it lighter for background
+            const R = Math.min(255, (num >> 16) + 60);
+            const G = Math.min(255, (num >> 8 & 0x00FF) + 60);
+            const B = Math.min(255, (num & 0x0000FF) + 60);
+            
+            return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1) + "40"; // Add transparency
+        };
+
+        const generateLocationBorderColor = (locationId, totalLocations, palette = 'Set3') => {
+            const colors = colorPalettes[palette];
+            return colors[locationId % colors.length];
+        };
+
+        const elk = new ELK();
+
+        // Function to apply ELK layout with hierarchical grouping
+        const applyElkLayout = async (nodes, edges, layoutType = 'layered') => {
+            const elkOptions = elkLayouts[layoutType] || elkLayouts.layered;
+            
+            console.log('Applying ELK layout:', layoutType, 'with options:', elkOptions);
+            console.log('Input nodes:', nodes.length, 'edges:', edges.length);
+            
+            // Group nodes by location first
+            const locationGroups = new Map();
+            const orphanNodes = [];
+            
+            nodes.forEach(node => {
+                const nodeLocationId = node.data?.locationId;
+                if (nodeLocationId !== null && nodeLocationId !== undefined) {
+                    if (!locationGroups.has(nodeLocationId)) {
+                        locationGroups.set(nodeLocationId, []);
+                    }
+                    locationGroups.get(nodeLocationId).push(node);
+                } else {
+                    orphanNodes.push(node);
+                }
+            });
+            
+            console.log('Found', locationGroups.size, 'location groups and', orphanNodes.length, 'orphan nodes');
+            
+            // Create hierarchical ELK structure with proper container spacing
+            const elkChildren = [];
+            let containerIndex = 0;
+            
+            // Process each location as a separate container
+            for (const [locationId, locationNodes] of locationGroups) {
+                const location = graphData.locations?.find(loc => loc.id.toString() === locationId.toString());
+                
+                const elkNodes = locationNodes.map(node => ({
+                    id: node.id,
+                    width: node.style?.width || 200,
+                    height: node.style?.height || 60,
+                }));
+
+                const elkEdgesInLocation = edges.filter(edge => {
+                    const sourceInLocation = locationNodes.some(n => n.id === edge.source);
+                    const targetInLocation = locationNodes.some(n => n.id === edge.target);
+                    return sourceInLocation && targetInLocation;
+                }).map(edge => ({
+                    id: edge.id,
+                    sources: [edge.source],
+                    targets: [edge.target],
+                }));
+                
+                console.log(`Location ${locationId} has ${elkEdgesInLocation.length} internal edges`);
+
+                elkChildren.push({
+                    id: `container_${locationId}`,
+                    width: 400,
+                    height: 300,
+                    layoutOptions: {
+                        ...elkOptions,
+                        'elk.padding': '[top=40,left=20,bottom=20,right=20]',
+                        'elk.spacing.nodeNode': 60,
+                    },
+                    children: elkNodes,
+                    edges: elkEdgesInLocation,
+                });
+                
+                containerIndex++;
+            }
+            
+            // Add orphan nodes as top-level nodes
+            orphanNodes.forEach(node => {
+                elkChildren.push({
+                    id: node.id,
+                    width: node.style?.width || 200,
+                    height: node.style?.height || 60,
+                });
+            });
+
+            // Cross-container edges
+            const crossContainerEdges = edges.filter(edge => {
+                const sourceLocation = nodes.find(n => n.id === edge.source)?.data?.locationId;
+                const targetLocation = nodes.find(n => n.id === edge.target)?.data?.locationId;
+                return sourceLocation !== targetLocation;
+            }).map(edge => ({
+                id: edge.id,
+                sources: [edge.source],
+                targets: [edge.target],
+            }));
+
+            const elkGraph = {
+                id: 'root',
+                layoutOptions: {
+                    ...elkOptions,
+                    'elk.spacing.nodeNode': 150,
+                    'elk.spacing.componentComponent': 100,
+                    'elk.layered.spacing.nodeNodeBetweenLayers': 150,
+                },
+                children: elkChildren,
+                edges: crossContainerEdges,
+            };
+
+            try {
+                console.log('Running ELK layout with hierarchical structure...');
+                const layoutedGraph = await elk.layout(elkGraph);
+                console.log('ELK layout complete:', layoutedGraph);
+                
+                // Apply positions from ELK layout
+                const layoutedNodes = nodes.map((node) => {
+                    // Find the node in the layout result
+                    let elkNode = null;
+                    let containerOffset = { x: 0, y: 0 };
+                    
+                    // Look for the node in containers first
+                    for (const container of layoutedGraph.children || []) {
+                        if (container.children) {
+                            const foundNode = container.children.find(n => n.id === node.id);
+                            if (foundNode) {
+                                elkNode = foundNode;
+                                containerOffset = { x: container.x || 0, y: container.y || 0 };
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If not found in containers, look at top level
+                    if (!elkNode) {
+                        elkNode = layoutedGraph.children?.find(n => n.id === node.id);
+                    }
+                    
+                    const newNode = {
+                        ...node,
+                        position: {
+                            x: elkNode ? (elkNode.x || 0) + containerOffset.x : Math.random() * 500,
+                            y: elkNode ? (elkNode.y || 0) + containerOffset.y : Math.random() * 500,
+                        },
+                    };
+                    return newNode;
+                });
+
+                console.log('Layouted nodes:', layoutedNodes.length);
+                return layoutedNodes;
+            } catch (error) {
+                console.error('ELK layout failed:', error);
+                // Fallback layout implementation...
+                return nodes;
+            }
+        };
+        
+        function HydroGraph() {
+            const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+            const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+            const [currentLayout, setCurrentLayout] = React.useState('mrtree');
+            const [currentPalette, setCurrentPalette] = React.useState('Set3');
+            
+            const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+            
+            const fitView = useCallback(() => {
+                const reactFlowInstance = window.reactFlowInstance;
+                if (reactFlowInstance) {
+                    reactFlowInstance.fitView();
+                }
+            }, []);
+            
+            // Apply node colors based on palette
+            const applyNodePalette = useCallback((nodes, palette) => {
+                return nodes.map(node => {
+                    if (node.data?.isContainer) return node;
+                    
+                    const nodeType = node.data?.nodeType || 'Transform';
+                    const colors = generateNodeColors(nodeType, palette);
+                    
+                    return {
+                        ...node,
+                        style: {
+                            ...node.style,
+                            '--node-color-primary': colors.primary,
+                            '--node-color-secondary': colors.secondary,
+                            '--node-border-color': colors.border,
+                        }
+                    };
+                });
+            }, []);
+            
+            const onInit = useCallback(async (reactFlowInstance) => {
+                window.reactFlowInstance = reactFlowInstance;
+                
+                console.log('Initializing graph with', initialNodes.length, 'nodes');
+                
+                // Apply ELK layout to get proper positions
+                const layoutedNodes = await applyElkLayout(initialNodes, initialEdges, currentLayout);
+                
+                // Group nodes by location for hierarchical display
+                const locationContainers = [];
+                const childNodes = [];
+                
+                if (graphData.locations && graphData.locations.length > 0) {
+                    console.log('Creating location containers for', graphData.locations.length, 'locations');
+                    
+                    graphData.locations.forEach(location => {
+                        // Find nodes in this location
+                        const locationNodes = layoutedNodes.filter(node => {
+                            const nodeLocationId = node.data?.locationId;
+                            return nodeLocationId !== null && 
+                                   nodeLocationId !== undefined && 
+                                   nodeLocationId.toString() === location.id.toString();
+                        });
+                        
+                        console.log(`Location ${location.id} (${location.label}) has ${locationNodes.length} nodes`);
+                        
+                        if (locationNodes.length > 0) {
+                            // Calculate bounding box for this location
+                            const minX = Math.min(...locationNodes.map(n => n.position.x));
+                            const minY = Math.min(...locationNodes.map(n => n.position.y));
+                            const maxX = Math.max(...locationNodes.map(n => n.position.x + 200));
+                            const maxY = Math.max(...locationNodes.map(n => n.position.y + 60));
+                            
+                            // Add padding
+                            const padding = 30;
+                            const containerX = minX - padding;
+                            const containerY = minY - padding - 30;
+                            
+                            // Generate unique colors for this location
+                            const backgroundColor = generateLocationColor(location.id, graphData.locations.length, currentPalette);
+                            const borderColor = generateLocationBorderColor(location.id, graphData.locations.length, currentPalette);
+                            
+                            // Create parent container
+                            locationContainers.push({
+                                id: `container_${location.id}`,
+                                type: 'group',
+                                position: { x: containerX, y: containerY },
+                                style: {
+                                    width: maxX - minX + 2 * padding,
+                                    height: maxY - minY + 2 * padding + 30,
+                                    backgroundColor: backgroundColor,
+                                    border: `2px solid ${borderColor}`,
+                                    borderRadius: '8px',
+                                },
+                                data: { 
+                                    label: location.label,
+                                    isContainer: true
+                                },
+                                draggable: true,
+                            });
+                            
+                            // Make nodes children of the container
+                            locationNodes.forEach(node => {
+                                childNodes.push({
+                                    ...node,
+                                    parentNode: `container_${location.id}`,
+                                    extent: 'parent',
+                                    position: {
+                                        x: node.position.x - containerX,
+                                        y: node.position.y - containerY
+                                    }
+                                });
+                            });
+                        }
+                    });
+                    
+                    // Handle orphan nodes (not in any location) - group them into a grey container
+                    const orphanNodes = layoutedNodes.filter(node => {
+                        const nodeLocationId = node.data?.locationId;
+                        if (nodeLocationId === null || nodeLocationId === undefined) return true;
+                        
+                        return !graphData.locations.some(loc => 
+                            loc.id.toString() === nodeLocationId.toString()
+                        );
+                    });
+                    
+                    console.log('Found', orphanNodes.length, 'orphan nodes');
+                    
+                    if (orphanNodes.length > 0) {
+                        // Calculate bounding box for orphan nodes
+                        const minX = Math.min(...orphanNodes.map(n => n.position.x));
+                        const minY = Math.min(...orphanNodes.map(n => n.position.y));
+                        const maxX = Math.max(...orphanNodes.map(n => n.position.x + 200));
+                        const maxY = Math.max(...orphanNodes.map(n => n.position.y + 60));
+                        
+                        // Add padding
+                        const padding = 30;
+                        const containerX = minX - padding;
+                        const containerY = minY - padding - 30;
+                        
+                        // Create grey container for orphan nodes
+                        locationContainers.push({
+                            id: 'container_null',
+                            type: 'group',
+                            position: { x: containerX, y: containerY },
+                            style: {
+                                width: maxX - minX + 2 * padding,
+                                height: maxY - minY + 2 * padding + 30,
+                                backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                border: '2px solid #999999',
+                                borderRadius: '8px',
+                            },
+                            data: { 
+                                label: 'Internal/Unassigned',
+                                isContainer: true
+                            },
+                            draggable: true,
+                        });
+                        
+                        // Make orphan nodes children of the grey container
+                        orphanNodes.forEach(node => {
+                            childNodes.push({
+                                ...node,
+                                parentNode: 'container_null',
+                                extent: 'parent',
+                                position: {
+                                    x: node.position.x - containerX,
+                                    y: node.position.y - containerY
+                                }
+                            });
+                        });
+                    }
+                } else {
+                    // No locations defined, use all nodes as-is
+                    console.log('No locations defined, using flat layout');
+                    childNodes.push(...layoutedNodes);
+                }
+                
+                // Apply palette colors to nodes
+                const coloredChildNodes = applyNodePalette(childNodes, currentPalette);
+                
+                // Combine containers and child nodes
+                const allElements = [...locationContainers, ...coloredChildNodes];
+                console.log('Setting', allElements.length, 'total elements:', {
+                    containers: locationContainers.length,
+                    nodes: coloredChildNodes.length
+                });
+                setNodes(allElements);
+                
+                // Ensure all edges are properly set
+                console.log('Setting', initialEdges.length, 'edges');
+                setEdges(initialEdges);
+                
+                // Fit view after layout is applied
+                setTimeout(() => {
+                    console.log('Fitting view...');
+                    reactFlowInstance.fitView({ padding: 0.1 });
+                }, 200);
+            }, [setNodes, currentLayout, currentPalette, applyNodePalette]);
+
+            // Apply elk layout with selected algorithm
+            const applyLayout = useCallback(async (layoutType = currentLayout) => {
+                console.log('Applying layout:', layoutType);
+                
+                // Only layout the actual graph nodes, not containers
+                const actualNodes = nodes.filter(node => !node.data?.isContainer);
+                console.log('Laying out', actualNodes.length, 'actual nodes');
+                
+                if (actualNodes.length === 0) {
+                    console.log('No nodes to layout');
+                    return;
+                }
+                
+                const layoutedNodes = await applyElkLayout(actualNodes, edges, layoutType);
+                
+                // Create new containers and child relationships
+                const locationContainers = [];
+                const childNodes = [];
+                
+                if (graphData.locations && graphData.locations.length > 0) {
+                    graphData.locations.forEach(location => {
+                        const locationNodes = layoutedNodes.filter(node => {
+                            const nodeLocationId = node.data?.locationId;
+                            return nodeLocationId !== null && 
+                                   nodeLocationId !== undefined && 
+                                   nodeLocationId.toString() === location.id.toString();
+                        });
+                        
+                        if (locationNodes.length > 0) {
+                            // Calculate bounding box
+                            const minX = Math.min(...locationNodes.map(n => n.position.x));
+                            const minY = Math.min(...locationNodes.map(n => n.position.y));
+                            const maxX = Math.max(...locationNodes.map(n => n.position.x + 200));
+                            const maxY = Math.max(...locationNodes.map(n => n.position.y + 60));
+                            
+                            const padding = 30;
+                            const containerX = minX - padding;
+                            const containerY = minY - padding - 30;
+                            
+                            // Generate unique colors for this location
+                            const backgroundColor = generateLocationColor(location.id, graphData.locations.length, currentPalette);
+                            const borderColor = generateLocationBorderColor(location.id, graphData.locations.length, currentPalette);
+                            
+                            // Create container
+                            locationContainers.push({
+                                id: `container_${location.id}`,
+                                type: 'group',
+                                position: { x: containerX, y: containerY },
+                                style: {
+                                    width: maxX - minX + 2 * padding,
+                                    height: maxY - minY + 2 * padding + 30,
+                                    backgroundColor: backgroundColor,
+                                    border: `2px solid ${borderColor}`,
+                                    borderRadius: '8px',
+                                },
+                                data: { 
+                                    label: location.label,
+                                    isContainer: true
+                                },
+                                draggable: true,
+                            });
+                            
+                            // Add child nodes
+                            locationNodes.forEach(node => {
+                                childNodes.push({
+                                    ...node,
+                                    parentNode: `container_${location.id}`,
+                                    extent: 'parent',
+                                    position: {
+                                        x: node.position.x - containerX,
+                                        y: node.position.y - containerY
+                                    }
+                                });
+                            });
+                        }
+                    });
+                    
+                    // Handle orphan nodes - group them into a grey container
+                    const orphanNodes = layoutedNodes.filter(node => {
+                        const nodeLocationId = node.data?.locationId;
+                        if (nodeLocationId === null || nodeLocationId === undefined) return true;
+                        return !graphData.locations.some(loc => 
+                            loc.id.toString() === nodeLocationId.toString()
+                        );
+                    });
+                    
+                    if (orphanNodes.length > 0) {
+                        // Calculate bounding box for orphan nodes
+                        const minX = Math.min(...orphanNodes.map(n => n.position.x));
+                        const minY = Math.min(...orphanNodes.map(n => n.position.y));
+                        const maxX = Math.max(...orphanNodes.map(n => n.position.x + 200));
+                        const maxY = Math.max(...orphanNodes.map(n => n.position.y + 60));
+                        
+                        const padding = 30;
+                        const containerX = minX - padding;
+                        const containerY = minY - padding - 30;
+                        
+                        // Create grey container for orphan nodes
+                        locationContainers.push({
+                            id: 'container_null',
+                            type: 'group',
+                            position: { x: containerX, y: containerY },
+                            style: {
+                                width: maxX - minX + 2 * padding,
+                                height: maxY - minY + 2 * padding + 30,
+                                backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                border: '2px solid #999999',
+                                borderRadius: '8px',
+                            },
+                            data: { 
+                                label: 'Internal/Unassigned',
+                                isContainer: true
+                            },
+                            draggable: true,
+                        });
+                        
+                        // Make orphan nodes children of the grey container
+                        orphanNodes.forEach(node => {
+                            childNodes.push({
+                                ...node,
+                                parentNode: 'container_null',
+                                extent: 'parent',
+                                position: {
+                                    x: node.position.x - containerX,
+                                    y: node.position.y - containerY
+                                }
+                            });
+                        });
+                    }
+                } else {
+                    childNodes.push(...layoutedNodes);
+                }
+                
+                // Apply palette colors to nodes
+                const coloredChildNodes = applyNodePalette(childNodes, currentPalette);
+                
+                const allElements = [...locationContainers, ...coloredChildNodes];
+                console.log('Updating to', allElements.length, 'elements');
+                setNodes(allElements);
+                
+                // Ensure all edges are properly maintained
+                console.log('Maintaining', initialEdges.length, 'edges');
+                setEdges(initialEdges);
+                
+                setTimeout(() => {
+                    if (window.reactFlowInstance) {
+                        window.reactFlowInstance.fitView({ padding: 0.1 });
+                    }
+                }, 200);
+            }, [nodes, edges, setNodes, currentLayout, currentPalette, applyNodePalette]);
+
+            // Handle layout change
+            const handleLayoutChange = useCallback(async (event) => {
+                const newLayout = event.target.value;
+                setCurrentLayout(newLayout);
+                await applyLayout(newLayout);
+            }, [applyLayout]);
+
+            // Handle palette change
+            const handlePaletteChange = useCallback(async (event) => {
+                const newPalette = event.target.value;
+                setCurrentPalette(newPalette);
+                
+                // Update node colors immediately
+                const updatedNodes = nodes.map(node => {
+                    if (node.data?.isContainer) {
+                        // Update container colors for locations
+                        if (node.id.startsWith('container_') && node.id !== 'container_null') {
+                            const locationId = parseInt(node.id.replace('container_', ''));
+                            const backgroundColor = generateLocationColor(locationId, graphData.locations?.length || 1, newPalette);
+                            const borderColor = generateLocationBorderColor(locationId, graphData.locations?.length || 1, newPalette);
+                            
+                            return {
+                                ...node,
+                                style: {
+                                    ...node.style,
+                                    backgroundColor: backgroundColor,
+                                    border: `2px solid ${borderColor}`,
+                                }
+                            };
+                        }
+                        return node;
+                    }
+                    
+                    const nodeType = node.data?.nodeType || 'Transform';
+                    const colors = generateNodeColors(nodeType, newPalette);
+                    
+                    return {
+                        ...node,
+                        style: {
+                            ...node.style,
+                            '--node-color-primary': colors.primary,
+                            '--node-color-secondary': colors.secondary,
+                            '--node-border-color': colors.border,
+                        }
+                    };
+                });
+                
+                setNodes(updatedNodes);
+            }, [nodes, setNodes]);
+
+            // Handle node clicks to toggle expansion
+            const onNodeClick = useCallback((event, node) => {
+                setNodes((nodes) => 
+                    nodes.map((n) => {
+                        if (n.id === node.id) {
+                            const expanded = !n.data.expanded;
+                            const label = expanded ? n.data.fullLabel : n.data.shortLabel;
+                            return {
+                                ...n,
+                                data: {
+                                    ...n.data,
+                                    label: label,
+                                    expanded: expanded
+                                }
+                            };
+                        }
+                        return n;
+                    })
+                );
+            }, [setNodes]);
+
+            // Toggle all nodes
+            const toggleAllNodes = useCallback(() => {
+                setNodes((nodes) => {
+                    const allExpanded = nodes.every(n => n.data.expanded);
+                    return nodes.map((n) => ({
+                        ...n,
+                        data: {
+                            ...n.data,
+                            label: allExpanded ? n.data.shortLabel : n.data.fullLabel,
+                            expanded: !allExpanded
+                        }
+                    }));
+                });
+            }, [setNodes]);
+            
+            return (
+                <div className="reactflow-wrapper">
+                    {/* Layout controls above legend in upper right */}
+                    <div className="layout-controls">
+                        <select 
+                            className="layout-select"
+                            value={currentLayout} 
+                            onChange={handleLayoutChange}
+                            title="Layout Algorithm"
+                        >
+                            <option value="force">Force</option>
+                            <option value="stress">Stress</option>
+                            <option value="mrtree">Tree</option>
+                            <option value="radial">Radial</option>
+                            <option value="disco">Disco</option>
+                        </select>
+                        <button className="icon-button" onClick={() => applyLayout()} title="Re-apply Layout">
+                            🔄
+                            <div className="tooltip">Re-apply Layout</div>
+                        </button>
+                        <button className="icon-button" onClick={toggleAllNodes} title="Toggle Details">
+                            📝
+                            <div className="tooltip">Toggle Details</div>
+                        </button>
+                        {/* Color palette controls */}
+                        <select 
+                            className="palette-select"
+                            value={currentPalette} 
+                            onChange={handlePaletteChange}
+                            title="Color Palette"
+                        >
+                            <option value="Set3">Set3</option>
+                            <option value="Pastel1">Pastel1</option>
+                            <option value="Dark2">Dark2</option>
+                            <option value="Accent">Accent</option>
+                            <option value="Spectral">Spectral</option>
+                        </select>
+                    </div>
+
+
+                    {/* Unified compact legend in upper right */}
+                    <div className="unified-legend">
+                        <div className="legend-section">
+                            <h4>Node Types</h4>
+                            {Object.keys(colorPalettes).length > 0 && ['Source', 'Transform', 'Join', 'Aggregation', 'Network', 'Sink', 'Tee'].map(nodeType => {
+                                const colors = generateNodeColors(nodeType, currentPalette);
+                                return (
+                                    <div key={nodeType} className="legend-item">
+                                        <div className="legend-color" style={{backgroundColor: colors.primary, borderColor: colors.border}}></div>
+                                        <span>{nodeType}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="legend-section">
+                            <h4>Locations</h4>
+                            {graphData.locations && graphData.locations.map((location, index) => (
+                                <div key={location.id} className="legend-item">
+                                    <div 
+                                        className="location-legend-color" 
+                                        style={{
+                                            backgroundColor: generateLocationColor(location.id, graphData.locations.length, currentPalette),
+                                            borderColor: generateLocationBorderColor(location.id, graphData.locations.length, currentPalette),
+                                            border: '1px solid'
+                                        }}
+                                    ></div>
+                                    <span>{location.label}</span>
+                                </div>
+                            ))}
+                            <div className="legend-item">
+                                <div 
+                                    className="location-legend-color" 
+                                    style={{
+                                        backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                        borderColor: '#999999',
+                                        border: '1px solid'
+                                    }}
+                                ></div>
+                                <span>Internal/Unassigned</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        onNodeClick={onNodeClick}
+                        onInit={onInit}
+                        connectionMode="loose"
+                        elevateEdgesOnSelect={true}
+                        edgesReconnectable={false}
+                        fitView
+                    >
+                        <Controls />
+                        <MiniMap />
+                        <Background />
+                    </ReactFlow>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<HydroGraph />, document.getElementById('root'));
+    </script>
+</body>
+</html>
