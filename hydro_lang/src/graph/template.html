@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hydro IR Graph - ReactFlow.js</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/@xyflow/react@12.8.2/dist/umd/index.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
     <script src="https://unpkg.com/elkjs@0.8.2/lib/elk.bundled.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.8.2/dist/style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.4/dist/style.css" />
     <style>
         body {
             margin: 0;
@@ -169,9 +169,9 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useCallback, useRef, useEffect } = React;
-        // ReactFlow v12+ components via @xyflow/react
+        // ReactFlow v11 components via reactflow
         const ReactFlowLib = window.ReactFlow;
-        const { ReactFlow, Controls, MiniMap, Background, useNodesState, useEdgesState, addEdge, applyNodeChanges, applyEdgeChanges } = ReactFlowLib;
+        const { default: ReactFlow, Controls, MiniMap, Background, useNodesState, useEdgesState, addEdge, applyNodeChanges, applyEdgeChanges } = ReactFlowLib;
         
         const graphData = {{GRAPH_DATA}};
         
@@ -1063,39 +1063,16 @@
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
                         onInit={onInit}
-                        // Connection settings for flexible edge connections
-                        connectionMode="loose"
-                        connectionLineType="smoothstep"
-                        connectionRadius={30}
-                        // Edge configuration
-                        defaultEdgeOptions={{
-                            type: 'smoothstep',
-                            animated: false,
-                            style: { strokeWidth: 2 }
-                            // IMPORTANT: No sourceHandle/targetHandle specified here either
-                        }}
-                        elevateEdgesOnSelect={true}
-                        edgesReconnectable={true}
-                        reconnectRadius={20}
-                        // Node interaction
-                        nodesDraggable={true}
-                        nodesConnectable={true}
-                        elementsSelectable={true}
-                        selectNodesOnDrag={false}
-                        // Viewport settings  
                         fitView
                         fitViewOptions={{ padding: 0.1 }}
                         snapToGrid={false}
                         snapGrid={[15, 15]}
-                        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                        attributionPosition="bottom-left"
-                        // Interaction
-                        connectOnClick={true}
-                        panOnDrag={true}
-                        // Remove constraints that might limit flexibility
+                        nodesDraggable={true}
+                        nodesConnectable={true}
+                        elementsSelectable={true}
                         deleteKeyCode={['Backspace', 'Delete']}
-                        selectionKeyCode={['Meta', 'Ctrl']}
-                        multiSelectionKeyCode={['Meta', 'Ctrl']}
+                        selectionKeyCode="Meta"
+                        multiSelectionKeyCode="Meta"
                     >
                         <Controls />
                         <MiniMap />
