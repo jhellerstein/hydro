@@ -26,7 +26,7 @@ impl<W> HydroReactFlow<W> {
         }
     }
 
-    fn node_type_to_style(&self, node_type: HydroNodeType) -> serde_json::Value {
+    fn node_type_to_style(&self, _node_type: HydroNodeType) -> serde_json::Value {
         // Base template for all nodes with modern card styling
         let base_style = serde_json::json!({
             "color": "#2d3748",

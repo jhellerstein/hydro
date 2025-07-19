@@ -302,12 +302,12 @@
             
             // Create gradient colors
             const primary = baseColor;
-            const secondary = lightenColor(baseColor, 20);
-            const tertiary = lightenColor(baseColor, 35);
-            const border = darkenColor(baseColor, 10);
+            const secondary = lightenColor(baseColor, 10);
+            const tertiary = lightenColor(baseColor, 25);
+            const border = darkenColor(baseColor, 5);
             
             // Create a gentle linear gradient
-            const gradient = `linear-gradient(135deg, ${tertiary} 0%, ${secondary} 50%, ${primary} 100%)`;
+            const gradient = `linear-gradient(0deg, ${tertiary} 0%, ${secondary} 80%, ${primary} 100%)`;
             
             return { primary, secondary, tertiary, border, gradient };
         };
