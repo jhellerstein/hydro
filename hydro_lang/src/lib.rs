@@ -58,8 +58,6 @@ pub mod ir;
 
 pub mod graph_render;
 
-#[cfg(feature = "debugging")]
-#[cfg_attr(docsrs, doc(cfg(feature = "debugging")))]
 pub mod graph_debug;
 
 pub mod rewrites;

@@ -51,8 +51,71 @@ impl ToTokens for DebugExpr {
 
 impl Debug for DebugExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_token_stream())
+        let original = self.0.to_token_stream().to_string();
+        let simplified = simplify_q_macro(&original);
+        
+        // For debugging, if we detect it should be simplified but it's not working, 
+        // let's try the fallback
+        if original.contains("stageleft :: runtime_support") && simplified == original {
+            write!(f, "q!(...)")
+        } else {
+            write!(f, "{}", simplified)
+        }
     }
+}
+
+/// Simplify expanded q! macro calls back to q!(...) syntax for better readability
+fn simplify_q_macro(token_str: &str) -> String {
+    // Look for patterns that indicate a q! macro expansion
+    if token_str.contains("stageleft :: runtime_support :: fn") {
+        // Try to extract the original closure content from the expanded macro
+        if let Some(start) = token_str.find("{ use") {
+            if let Some(end) = token_str.rfind("})") {
+                let inner_content = &token_str[start..=end+1];
+                
+                // Look for the actual closure pattern
+                if let Some(closure_start) = inner_content.find("| ") {
+                    if let Some(closure_end) = inner_content.rfind(" }") {
+                        let closure_content = &inner_content[closure_start..=closure_end];
+                        // Clean up the closure content
+                        let simplified = cleanup_closure_content(closure_content);
+                        return format!("q!({})", simplified);
+                    }
+                }
+                
+                // Fallback: try to find any closure-like pattern
+                if let Some(pipe_pos) = inner_content.find('|') {
+                    if let Some(end_brace) = inner_content[pipe_pos..].find(" }") {
+                        let closure_part = &inner_content[pipe_pos..pipe_pos + end_brace + 2];
+                        let simplified = cleanup_closure_content(closure_part);
+                        return format!("q!({})", simplified);
+                    }
+                }
+            }
+        }
+        
+        // If we can't extract the closure, return a simplified q!(...) notation
+        return "q!(...)".to_string();
+    }
+    
+    // For non-q! expressions, return as-is but cleaned up
+    if token_str.len() > 50 {
+        format!("{}...", &token_str[..47])
+    } else {
+        token_str.to_string()
+    }
+}
+
+/// Clean up closure content to make it more readable
+fn cleanup_closure_content(content: &str) -> String {
+    content
+        .replace(" . ", ".")
+        .replace(" , ", ", ")
+        .replace(" ! ", "!")
+        .replace(" :: ", "::")
+        .replace("  ", " ")
+        .trim()
+        .to_string()
 }
 
 /// Debug displays the type's tokens.

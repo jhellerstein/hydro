@@ -13,9 +13,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Extract the IR BEFORE the builder is consumed by deployment methods
     let built = builder.finalize();
 
-    // Generate graph visualization (do this before deployment to avoid ownership issues)
-    #[cfg(feature = "debugging")]
-    open_hydro_ir_mermaid_vscode(built.ir(), "chat_graph.mermaid")?;
+    // // Generate graph visualization (do this before deployment to avoid ownership issues)
+    // #[cfg(feature = "debugging")]
+    // open_hydro_ir_mermaid_vscode(built.ir(), "chat_graph.mermaid")?;
+
+    // Also generate ReactFlow.js visualization
+    open_hydro_ir_reactflow_browser(built.ir(), Some("chat_graph.html"), None)?;
 
     // Now use the built flow for deployment with optimization
     let _nodes = built

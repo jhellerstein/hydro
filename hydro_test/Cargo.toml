@@ -9,8 +9,6 @@ workspace = true
 
 [features]
 ilp = ["hydro_optimize/ilp"]
-
-[features]
 debugging = ["hydro_lang/debugging"]
 
 [dependencies]

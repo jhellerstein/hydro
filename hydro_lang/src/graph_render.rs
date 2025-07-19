@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use auto_impl::auto_impl;
-use quote::ToTokens;
+use serde_json;
 
 use crate::ir::{HydroLeaf, HydroNode, HydroSource};
 
@@ -22,6 +22,8 @@ pub trait HydroGraphWrite {
         node_id: usize,
         node_label: &str,
         node_type: HydroNodeType,
+        location_id: Option<usize>,
+        location_type: Option<&str>,
     ) -> Result<(), Self::Err>;
 
     /// Write an edge between nodes with optional labeling.
@@ -100,6 +102,11 @@ pub fn escape_mermaid(string: &str) -> String {
         .replace('\n', "<br>")
         // Handle code block markers
         .replace("`", "&#96;")
+        // Handle parentheses that can conflict with Mermaid syntax
+        .replace('(', "&#40;")
+        .replace(')', "&#41;")
+        // Handle pipes that can conflict with Mermaid edge labels
+        .replace('|', "&#124;")
 }
 
 /// Mermaid graph writer for Hydro IR.
@@ -149,6 +156,8 @@ where
         node_id: usize,
         node_label: &str,
         node_type: HydroNodeType,
+        _location_id: Option<usize>,
+        _location_type: Option<&str>,
     ) -> Result<(), Self::Err> {
         let class_str = match node_type {
             HydroNodeType::Source => "sourceClass",
@@ -314,6 +323,8 @@ where
         node_id: usize,
         node_label: &str,
         node_type: HydroNodeType,
+        _location_id: Option<usize>,
+        _location_type: Option<&str>,
     ) -> Result<(), Self::Err> {
         let escaped_label = escape_dot(node_label, "\\l");
         let label = format!("n{}", node_id);
@@ -439,6 +450,347 @@ where
     }
 }
 
+/// ReactFlow.js graph writer for Hydro IR.
+/// Outputs JSON that can be directly used with ReactFlow.js for interactive graph visualization.
+pub struct HydroReactFlow<W> {
+    write: W,
+    nodes: Vec<serde_json::Value>,
+    edges: Vec<serde_json::Value>,
+    locations: HashMap<usize, (String, Vec<usize>)>, // location_id -> (label, node_ids)
+    edge_count: usize,
+}
+
+impl<W> HydroReactFlow<W> {
+    pub fn new(write: W) -> Self {
+        Self {
+            write,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            locations: HashMap::new(),
+            edge_count: 0,
+        }
+    }
+
+    fn node_type_to_style(&self, node_type: HydroNodeType) -> serde_json::Value {
+        match node_type {
+            HydroNodeType::Source => serde_json::json!({
+                "backgroundColor": "#88ff88",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Transform => serde_json::json!({
+                "backgroundColor": "#8888ff",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Join => serde_json::json!({
+                "backgroundColor": "#ff8888",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Aggregation => serde_json::json!({
+                "backgroundColor": "#ffff88",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Network => serde_json::json!({
+                "backgroundColor": "#88ffff",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Sink => serde_json::json!({
+                "backgroundColor": "#ff88ff",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+            HydroNodeType::Tee => serde_json::json!({
+                "backgroundColor": "#dddddd",
+                "color": "#000000",
+                "border": "2px solid #000000",
+                "borderRadius": "8px",
+                "padding": "8px",
+                "fontSize": "12px",
+                "fontFamily": "monospace"
+            }),
+        }
+    }
+
+    fn edge_type_to_style(&self, edge_type: HydroEdgeType) -> serde_json::Value {
+        match edge_type {
+            HydroEdgeType::Stream => serde_json::json!({
+                "stroke": "#666666",
+                "strokeWidth": 2,
+                "animated": false
+            }),
+            HydroEdgeType::Persistent => serde_json::json!({
+                "stroke": "#008800",
+                "strokeWidth": 3,
+                "animated": false
+            }),
+            HydroEdgeType::Network => serde_json::json!({
+                "stroke": "#880088",
+                "strokeWidth": 2,
+                "strokeDasharray": "5,5",
+                "animated": true
+            }),
+            HydroEdgeType::Cycle => serde_json::json!({
+                "stroke": "#ff0000",
+                "strokeWidth": 2,
+                "animated": true
+            }),
+        }
+    }
+}
+
+impl<W> HydroGraphWrite for HydroReactFlow<W>
+where
+    W: std::fmt::Write,
+{
+    type Err = std::fmt::Error;
+
+    fn write_prologue(&mut self) -> Result<(), Self::Err> {
+        // Clear any existing data
+        self.nodes.clear();
+        self.edges.clear();
+        self.locations.clear();
+        self.edge_count = 0;
+        Ok(())
+    }
+
+    fn write_node_definition(
+        &mut self,
+        node_id: usize,
+        node_label: &str,
+        node_type: HydroNodeType,
+        location_id: Option<usize>,
+        location_type: Option<&str>,
+    ) -> Result<(), Self::Err> {
+        let style = self.node_type_to_style(node_type);
+
+        // Extract short label from full label
+        let short_label = self.extract_short_label(node_label);
+
+        // If short and full labels are the same or very similar, enhance the full label
+        let enhanced_full_label = if short_label.len() >= node_label.len() - 2 {
+            // If they're nearly the same length, add more context to full label
+            match short_label.as_str() {
+                "inspect" => "inspect [debug output]".to_string(),
+                "persist" => "persist [state storage]".to_string(),
+                "tee" => "tee [branch dataflow]".to_string(),
+                "delta" => "delta [change detection]".to_string(),
+                "spin" => "spin [delay/buffer]".to_string(),
+                "send_bincode" => "send_bincode [send data to process/cluster]".to_string(),
+                "broadcast_bincode" => {
+                    "broadcast_bincode [send data to all cluster members]".to_string()
+                }
+                "source_iter" => "source_iter [iterate over collection]".to_string(),
+                "source_stream" => "source_stream [receive external data stream]".to_string(),
+                "network(recv)" => "network(recv) [receive from network]".to_string(),
+                "network(send)" => "network(send) [send to network]".to_string(),
+                "dest_sink" => "dest_sink [output destination]".to_string(),
+                _ => {
+                    if node_label.len() < 15 {
+                        format!("{} [{}]", node_label, "hydro operator")
+                    } else {
+                        node_label.to_string()
+                    }
+                }
+            }
+        } else {
+            node_label.to_string()
+        };
+
+        let node = serde_json::json!({
+            "id": node_id.to_string(),
+            "type": "default",
+            "data": {
+                "label": short_label,
+                "shortLabel": short_label,
+                "fullLabel": enhanced_full_label,
+                "expanded": false,
+                "locationId": location_id,
+                "locationType": location_type
+            },
+            "position": {
+                "x": 0,
+                "y": 0
+            },
+            "style": style
+        });
+        self.nodes.push(node);
+        Ok(())
+    }
+
+    fn write_edge(
+        &mut self,
+        src_id: usize,
+        dst_id: usize,
+        edge_type: HydroEdgeType,
+        label: Option<&str>,
+    ) -> Result<(), Self::Err> {
+        let style = self.edge_type_to_style(edge_type);
+        let edge_id = format!("e{}", self.edge_count);
+        self.edge_count += 1;
+
+        let mut edge = serde_json::json!({
+            "id": edge_id,
+            "source": src_id.to_string(),
+            "target": dst_id.to_string(),
+            "style": style,
+            "type": "default"
+        });
+
+        if let Some(label_text) = label {
+            edge["label"] = serde_json::Value::String(label_text.to_string());
+            edge["labelStyle"] = serde_json::json!({
+                "fontSize": "10px",
+                "fontFamily": "monospace",
+                "fill": "#333333"
+            });
+        }
+
+        self.edges.push(edge);
+        Ok(())
+    }
+
+    fn write_location_start(
+        &mut self,
+        location_id: usize,
+        location_type: &str,
+    ) -> Result<(), Self::Err> {
+        let location_label = format!("{} {}", location_type, location_id);
+        self.locations
+            .insert(location_id, (location_label, Vec::new()));
+        Ok(())
+    }
+
+    fn write_node(&mut self, node_id: usize) -> Result<(), Self::Err> {
+        // Find the current location being written and add this node to it
+        if let Some((_, node_ids)) = self.locations.values_mut().last() {
+            node_ids.push(node_id);
+        }
+        Ok(())
+    }
+
+    fn write_location_end(&mut self) -> Result<(), Self::Err> {
+        // Location grouping complete - nothing to do for ReactFlow
+        Ok(())
+    }
+
+    fn write_epilogue(&mut self) -> Result<(), Self::Err> {
+        // Apply automatic layout using a simple algorithm
+        self.apply_layout();
+
+        // Create the final JSON structure
+        let output = serde_json::json!({
+            "nodes": self.nodes,
+            "edges": self.edges,
+            "locations": self.locations.iter().map(|(id, (label, nodes))| {
+                serde_json::json!({
+                    "id": id.to_string(),
+                    "label": label,
+                    "nodes": nodes
+                })
+            }).collect::<Vec<_>>()
+        });
+
+        write!(
+            self.write,
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap()
+        )
+    }
+}
+
+impl<W> HydroReactFlow<W> {
+    /// Apply elk.js layout via browser - nodes start at origin for elk.js to position
+    fn apply_layout(&mut self) {
+        // Set all nodes to default position - elk.js will handle layout in browser
+        for node in &mut self.nodes {
+            node["position"]["x"] = serde_json::Value::Number(serde_json::Number::from(0));
+            node["position"]["y"] = serde_json::Value::Number(serde_json::Number::from(0));
+        }
+    }
+
+    /// Extract a short, readable label from the full token stream label
+    fn extract_short_label(&self, full_label: &str) -> String {
+        // Look for common patterns and extract just the operation name
+        if let Some(op_name) = full_label.split('(').next() {
+            match op_name.to_lowercase().as_str() {
+                "map" => "map".to_string(),
+                "filter" => "filter".to_string(),
+                "flat_map" => "flat_map".to_string(),
+                "filter_map" => "filter_map".to_string(),
+                "for_each" => "for_each".to_string(),
+                "fold" => "fold".to_string(),
+                "reduce" => "reduce".to_string(),
+                "join" => "join".to_string(),
+                "persist" => "persist".to_string(),
+                "delta" => "delta".to_string(),
+                "tee" => "tee".to_string(),
+                "source_iter" => "source_iter".to_string(),
+                "dest_sink" => "dest_sink".to_string(),
+                "cycle_sink" => "cycle_sink".to_string(),
+                "external_network" => "network".to_string(),
+                "spin" => "spin".to_string(),
+                "inspect" => "inspect".to_string(),
+                _ if full_label.contains("network") => {
+                    if full_label.contains("deser") {
+                        "network(recv)".to_string()
+                    } else if full_label.contains("ser") {
+                        "network(send)".to_string()
+                    } else {
+                        "network".to_string()
+                    }
+                }
+                _ if full_label.contains("send_bincode") => "send_bincode".to_string(),
+                _ if full_label.contains("broadcast_bincode") => "broadcast_bincode".to_string(),
+                _ if full_label.contains("dest_sink") => "dest_sink".to_string(),
+                _ if full_label.contains("source_stream") => "source_stream".to_string(),
+                _ => {
+                    // For other cases, try to get a reasonable short name
+                    if full_label.len() > 20 {
+                        format!("{}...", &full_label[..17])
+                    } else {
+                        full_label.to_string()
+                    }
+                }
+            }
+        } else {
+            // Fallback for labels that don't follow the pattern
+            if full_label.len() > 20 {
+                format!("{}...", &full_label[..17])
+            } else {
+                full_label.to_string()
+            }
+        }
+    }
+}
+
 /// Graph structure tracker for Hydro IR rendering.
 #[derive(Debug)]
 pub struct HydroGraphStructure {
@@ -520,6 +872,23 @@ impl HydroLeaf {
         self.write_graph(&mut graph_write, config)
     }
 
+    /// Generate a ReactFlow.js JSON representation of this Hydro IR leaf and its subgraph.
+    pub fn to_reactflow(&self, config: &HydroWriteConfig) -> String {
+        let mut output = String::new();
+        self.write_reactflow(&mut output, config).unwrap();
+        output
+    }
+
+    /// Write ReactFlow.js JSON representation to the given writer.
+    pub fn write_reactflow(
+        &self,
+        output: impl std::fmt::Write,
+        config: &HydroWriteConfig,
+    ) -> std::fmt::Result {
+        let mut graph_write = HydroReactFlow::new(output);
+        self.write_graph(&mut graph_write, config)
+    }
+
     /// Core graph writing logic that works with any GraphWrite implementation.
     pub fn write_graph<W>(
         &self,
@@ -539,8 +908,22 @@ impl HydroLeaf {
         graph_write.write_prologue()?;
 
         // Write node definitions
-        for (&node_id, (label, node_type, _location)) in &structure.nodes {
-            graph_write.write_node_definition(node_id, label, *node_type)?;
+        for (&node_id, (label, node_type, location)) in &structure.nodes {
+            let (location_id, location_type) = if let Some(loc_id) = location {
+                (
+                    Some(*loc_id),
+                    structure.locations.get(loc_id).map(|s| s.as_str()),
+                )
+            } else {
+                (None, None)
+            };
+            graph_write.write_node_definition(
+                node_id,
+                label,
+                *node_type,
+                location_id,
+                location_type,
+            )?;
         }
 
         // Group nodes by location if requested
@@ -608,7 +991,7 @@ impl HydroLeaf {
                     structure.add_location(loc_id, loc_type);
                 }
                 let sink_id = structure.add_node(
-                    format!("for_each({})", f.to_token_stream()),
+                    format!("for_each({:?})", f),
                     HydroNodeType::Sink,
                     location_id,
                 );
@@ -626,7 +1009,7 @@ impl HydroLeaf {
                     structure.add_location(loc_id, loc_type);
                 }
                 let sink_id = structure.add_node(
-                    format!("dest_sink({})", sink.to_token_stream()),
+                    format!("dest_sink({:?})", sink),
                     HydroNodeType::Sink,
                     location_id,
                 );
@@ -696,10 +1079,10 @@ impl HydroNode {
                 }
                 let label = match source {
                     HydroSource::Stream(expr) => {
-                        format!("source_stream({})", expr.to_token_stream())
+                        format!("source_stream({:?})", expr)
                     }
                     HydroSource::ExternalNetwork() => "external_network()".to_string(),
-                    HydroSource::Iter(expr) => format!("source_iter({})", expr.to_token_stream()),
+                    HydroSource::Iter(expr) => format!("source_iter({:?})", expr),
                     HydroSource::Spin() => "spin()".to_string(),
                 };
                 structure.add_node(label, HydroNodeType::Source, location_id)
@@ -784,7 +1167,7 @@ impl HydroNode {
                     structure.add_location(loc_id, loc_type);
                 }
                 let map_id = structure.add_node(
-                    format!("map({})", f.to_token_stream()),
+                    format!("map({:?})", f),
                     HydroNodeType::Transform,
                     location_id,
                 );
@@ -799,7 +1182,7 @@ impl HydroNode {
                     structure.add_location(loc_id, loc_type);
                 }
                 let filter_id = structure.add_node(
-                    format!("filter({})", f.to_token_stream()),
+                    format!("filter({:?})", f),
                     HydroNodeType::Transform,
                     location_id,
                 );
@@ -847,11 +1230,7 @@ impl HydroNode {
                     structure.add_location(loc_id, loc_type);
                 }
                 let fold_id = structure.add_node(
-                    format!(
-                        "fold({}, {})",
-                        init.to_token_stream(),
-                        acc.to_token_stream()
-                    ),
+                    format!("fold({:?}, {:?})", init, acc),
                     HydroNodeType::Aggregation,
                     location_id,
                 );
@@ -923,7 +1302,7 @@ impl HydroNode {
                             structure.add_location(loc_id, loc_type);
                         }
                         let node_id = structure.add_node(
-                            format!("flat_map({})", f.to_token_stream()),
+                            format!("flat_map({:?})", f),
                             HydroNodeType::Transform,
                             location_id,
                         );
@@ -938,7 +1317,7 @@ impl HydroNode {
                             structure.add_location(loc_id, loc_type);
                         }
                         let node_id = structure.add_node(
-                            format!("filter_map({})", f.to_token_stream()),
+                            format!("filter_map({:?})", f),
                             HydroNodeType::Transform,
                             location_id,
                         );
@@ -1000,6 +1379,21 @@ pub fn write_hydro_ir_dot(
     write_hydro_ir_graph(&mut graph_write, leaves, config)
 }
 
+pub fn render_hydro_ir_reactflow(leaves: &[HydroLeaf], config: &HydroWriteConfig) -> String {
+    let mut output = String::new();
+    write_hydro_ir_reactflow(&mut output, leaves, config).unwrap();
+    output
+}
+
+pub fn write_hydro_ir_reactflow(
+    output: impl std::fmt::Write,
+    leaves: &[HydroLeaf],
+    config: &HydroWriteConfig,
+) -> std::fmt::Result {
+    let mut graph_write = HydroReactFlow::new(output);
+    write_hydro_ir_graph(&mut graph_write, leaves, config)
+}
+
 fn write_hydro_ir_graph<W>(
     mut graph_write: W,
     leaves: &[HydroLeaf],
@@ -1019,8 +1413,22 @@ where
     // Write the graph using the same logic as individual leaves
     graph_write.write_prologue()?;
 
-    for (&node_id, (label, node_type, _)) in &structure.nodes {
-        graph_write.write_node_definition(node_id, label, *node_type)?;
+    for (&node_id, (label, node_type, location)) in &structure.nodes {
+        let (location_id, location_type) = if let Some(loc_id) = location {
+            (
+                Some(*loc_id),
+                structure.locations.get(loc_id).map(|s| s.as_str()),
+            )
+        } else {
+            (None, None)
+        };
+        graph_write.write_node_definition(
+            node_id,
+            label,
+            *node_type,
+            location_id,
+            location_type,
+        )?;
     }
 
     if config.show_location_groups {
