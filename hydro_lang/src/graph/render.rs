@@ -94,7 +94,7 @@ impl Default for HydroWriteConfig {
 }
 
 /// Graph structure tracker for Hydro IR rendering.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct HydroGraphStructure {
     pub nodes: HashMap<usize, (String, HydroNodeType, Option<usize>)>, /* node_id -> (label, type, location) */
     pub edges: Vec<(usize, usize, HydroEdgeType, Option<String>)>, // (src, dst, edge_type, label)
@@ -104,12 +104,7 @@ pub struct HydroGraphStructure {
 
 impl HydroGraphStructure {
     pub fn new() -> Self {
-        Self {
-            nodes: HashMap::new(),
-            edges: Vec::new(),
-            locations: HashMap::new(),
-            next_node_id: 0,
-        }
+        Self::default()
     }
 
     pub fn add_node(
@@ -379,6 +374,13 @@ impl HydroNode {
             location_id
         }
 
+        // Helper struct to group node creation parameters
+        struct NodeParams {
+            label: String,
+            node_type: HydroNodeType,
+            edge_type: HydroEdgeType,
+        }
+
         // Helper function for single-input transform nodes
         fn build_single_input_transform(
             structure: &mut HydroGraphStructure,
@@ -386,14 +388,12 @@ impl HydroNode {
             config: &HydroWriteConfig,
             input: &HydroNode,
             metadata: &crate::ir::HydroIrMetadata,
-            label: String,
-            node_type: HydroNodeType,
-            edge_type: HydroEdgeType,
+            params: NodeParams,
         ) -> usize {
             let input_id = input.build_graph_structure(structure, seen_tees, config);
             let location_id = setup_location(structure, metadata);
-            let node_id = structure.add_node(label, node_type, location_id);
-            structure.add_edge(input_id, node_id, edge_type, None);
+            let node_id = structure.add_node(params.label, params.node_type, location_id);
+            structure.add_edge(input_id, node_id, params.edge_type, None);
             node_id
         }
 
@@ -460,9 +460,11 @@ impl HydroNode {
                 config,
                 inner,
                 metadata,
-                "persist()".to_string(),
-                HydroNodeType::Transform,
-                HydroEdgeType::Persistent,
+                NodeParams {
+                    label: "persist()".to_string(),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Persistent,
+                },
             ),
 
             HydroNode::Delta { inner, metadata } => build_single_input_transform(
@@ -471,9 +473,11 @@ impl HydroNode {
                 config,
                 inner,
                 metadata,
-                "delta()".to_string(),
-                HydroNodeType::Transform,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: "delta()".to_string(),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::Map { f, input, metadata } => build_single_input_transform(
@@ -482,9 +486,11 @@ impl HydroNode {
                 config,
                 input,
                 metadata,
-                format!("map({:?})", f),
-                HydroNodeType::Transform,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: format!("map({:?})", f),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::Filter { f, input, metadata } => build_single_input_transform(
@@ -493,9 +499,11 @@ impl HydroNode {
                 config,
                 input,
                 metadata,
-                format!("filter({:?})", f),
-                HydroNodeType::Transform,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: format!("filter({:?})", f),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::Join {
@@ -534,9 +542,11 @@ impl HydroNode {
                 config,
                 input,
                 metadata,
-                format!("fold({:?}, {:?})", init, acc),
-                HydroNodeType::Aggregation,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: format!("fold({:?}, {:?})", init, acc),
+                    node_type: HydroNodeType::Aggregation,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::Network {
@@ -595,9 +605,11 @@ impl HydroNode {
                 config,
                 input,
                 metadata,
-                format!("flat_map({:?})", f),
-                HydroNodeType::Transform,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: format!("flat_map({:?})", f),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::FilterMap { f, input, metadata } => build_single_input_transform(
@@ -606,9 +618,11 @@ impl HydroNode {
                 config,
                 input,
                 metadata,
-                format!("filter_map({:?})", f),
-                HydroNodeType::Transform,
-                HydroEdgeType::Stream,
+                NodeParams {
+                    label: format!("filter_map({:?})", f),
+                    node_type: HydroNodeType::Transform,
+                    edge_type: HydroEdgeType::Stream,
+                },
             ),
 
             HydroNode::Unpersist { inner, .. } => {
