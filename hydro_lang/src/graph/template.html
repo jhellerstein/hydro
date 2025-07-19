@@ -981,9 +981,17 @@
                         onNodeClick={onNodeClick}
                         onInit={onInit}
                         connectionMode="loose"
+                        connectionLineType="smoothstep"
+                        defaultEdgeOptions={{
+                            type: 'smoothstep',
+                            animated: false,
+                            style: { strokeWidth: 2 }
+                        }}
                         elevateEdgesOnSelect={true}
                         edgesReconnectable={false}
                         fitView
+                        snapToGrid={false}
+                        snapGrid={[15, 15]}
                     >
                         <Controls />
                         <MiniMap />

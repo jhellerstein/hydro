@@ -243,15 +243,33 @@ where
             "source": src_id.to_string(),
             "target": dst_id.to_string(),
             "style": style,
-            "type": "default"
+            // Use smart edge type for better routing and flexible connection points
+            "type": "smoothstep",
+            // Let ReactFlow choose optimal connection points
+            // Remove fixed sourceHandle/targetHandle to enable flexible connections
+            "animated": false
         });
+
+        // Add animation for certain edge types
+        if matches!(edge_type, HydroEdgeType::Network | HydroEdgeType::Cycle) {
+            edge["animated"] = serde_json::Value::Bool(true);
+        }
 
         if let Some(label_text) = label {
             edge["label"] = serde_json::Value::String(label_text.to_string());
             edge["labelStyle"] = serde_json::json!({
                 "fontSize": "10px",
                 "fontFamily": "monospace",
-                "fill": "#333333"
+                "fill": "#333333",
+                "backgroundColor": "rgba(255, 255, 255, 0.8)",
+                "padding": "2px 4px",
+                "borderRadius": "3px"
+            });
+            // Center the label on the edge
+            edge["labelShowBg"] = serde_json::Value::Bool(true);
+            edge["labelBgStyle"] = serde_json::json!({
+                "fill": "rgba(255, 255, 255, 0.8)",
+                "fillOpacity": 0.8
             });
         }
 
