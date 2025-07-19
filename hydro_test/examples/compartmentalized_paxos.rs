@@ -87,7 +87,21 @@ async fn main() {
 
     let rustflags = "-C opt-level=3 -C codegen-units=1 -C strip=none -C debuginfo=2 -C lto=off";
 
-    let _nodes = builder
+    // Build and optimize first, then extract IR with proper location assignments
+    let built = builder.finalize();
+    let optimized = built.with_default_optimize();
+
+    // Generate and open the ReactFlow visualization AFTER optimization
+    println!("Generated Hydro IR with {} leaves", optimized.ir().len());
+    if let Err(e) = hydro_lang::graph_debug::open_hydro_ir_reactflow_browser(
+        optimized.ir(),
+        Some("compartmentalized_paxos_graph.html"),
+        None,
+    ) {
+        eprintln!("Failed to open ReactFlow visualization: {}", e);
+    }
+
+    let _nodes = optimized
         .with_cluster(
             &proposers,
             (0..f + 1)

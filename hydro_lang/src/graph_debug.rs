@@ -525,7 +525,16 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
         const graphData = {reactflow_json};
         
         const initialNodes = graphData.nodes || [];
-        const initialEdges = graphData.edges || [];
+        const initialEdges = (graphData.edges || []).map(edge => ({{
+            ...edge,
+            zIndex: 1000, // Ensure edges render above containers
+            style: {{
+                ...edge.style,
+                strokeWidth: 2,
+                stroke: '#666666'
+            }},
+            interactionWidth: 20 // Make edges easier to interact with
+        }}));
 
         // elk.js layout configuration with hierarchical support
         const elkLayouts = {{
@@ -569,33 +578,105 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
             }}
         }};
 
+        // Generate unique colors for each location ID
+        const generateLocationColor = (locationId, totalLocations) => {{
+            const hue = (locationId * 137.508) % 360; // Golden angle for good distribution
+            const saturation = 40 + (locationId * 13) % 30; // 40-70% saturation
+            const lightness = 85 + (locationId * 7) % 10; // 85-95% lightness
+            return `hsl(${{hue}}, ${{saturation}}%, ${{lightness}}%)`;
+        }};
+
+        const generateLocationBorderColor = (locationId, totalLocations) => {{
+            const hue = (locationId * 137.508) % 360;
+            const saturation = 60 + (locationId * 13) % 30; // 60-90% saturation
+            const lightness = 50 + (locationId * 7) % 20; // 50-70% lightness
+            return `hsl(${{hue}}, ${{saturation}}%, ${{lightness}}%)`;
+        }};
+
         const elk = new ELK();
 
         // Function to apply ELK layout with hierarchical grouping
         const applyElkLayout = async (nodes, edges, layoutType = 'layered') => {{
             const elkOptions = elkLayouts[layoutType] || elkLayouts.layered;
             
-            const locationGroups = {{}};
+            console.log('Applying ELK layout:', layoutType, 'with options:', elkOptions);
+            console.log('Input nodes:', nodes.length, 'edges:', edges.length);
             
-            // Group nodes by location
+            // Group nodes by location first
+            const locationGroups = new Map();
+            const orphanNodes = [];
+            
             nodes.forEach(node => {{
-                const locationId = node.data.locationId;
-                const groupKey = locationId !== null && locationId !== undefined ? locationId.toString() : 'unassigned';
-                
-                if (!locationGroups[groupKey]) {{
-                    locationGroups[groupKey] = [];
+                const nodeLocationId = node.data?.locationId;
+                if (nodeLocationId !== null && nodeLocationId !== undefined) {{
+                    if (!locationGroups.has(nodeLocationId)) {{
+                        locationGroups.set(nodeLocationId, []);
+                    }}
+                    locationGroups.get(nodeLocationId).push(node);
+                }} else {{
+                    orphanNodes.push(node);
                 }}
-                locationGroups[groupKey].push(node);
+            }});
+            
+            console.log('Found', locationGroups.size, 'location groups and', orphanNodes.length, 'orphan nodes');
+            
+            // Create hierarchical ELK structure with proper container spacing
+            const elkChildren = [];
+            let containerIndex = 0;
+            
+            // Process each location as a separate container
+            for (const [locationId, locationNodes] of locationGroups) {{
+                const location = graphData.locations?.find(loc => loc.id.toString() === locationId.toString());
+                
+                const elkNodes = locationNodes.map(node => ({{
+                    id: node.id,
+                    width: node.style?.width || 200,
+                    height: node.style?.height || 60,
+                }}));
+
+                const elkEdgesInLocation = edges.filter(edge => {{
+                    const sourceInLocation = locationNodes.some(n => n.id === edge.source);
+                    const targetInLocation = locationNodes.some(n => n.id === edge.target);
+                    return sourceInLocation && targetInLocation;
+                }}).map(edge => ({{
+                    id: edge.id,
+                    sources: [edge.source],
+                    targets: [edge.target],
+                }}));
+                
+                console.log(`Location ${{locationId}} has ${{elkEdgesInLocation.length}} internal edges`);
+
+                elkChildren.push({{
+                    id: `container_${{locationId}}`,
+                    width: 400,
+                    height: 300,
+                    layoutOptions: {{
+                        ...elkOptions,
+                        'elk.padding': '[top=40,left=20,bottom=20,right=20]',
+                        'elk.spacing.nodeNode': 60,
+                    }},
+                    children: elkNodes,
+                    edges: elkEdgesInLocation,
+                }});
+                
+                containerIndex++;
+            }}
+            
+            // Add orphan nodes as top-level nodes
+            orphanNodes.forEach(node => {{
+                elkChildren.push({{
+                    id: node.id,
+                    width: node.style?.width || 200,
+                    height: node.style?.height || 60,
+                }});
             }});
 
-            // Create elk nodes (flat structure but grouped)
-            const elkNodes = nodes.map(node => ({{
-                id: node.id,
-                width: 200,
-                height: 60,
-            }}));
-
-            const elkEdges = edges.map((edge) => ({{
+            // Cross-container edges
+            const crossContainerEdges = edges.filter(edge => {{
+                const sourceLocation = nodes.find(n => n.id === edge.source)?.data?.locationId;
+                const targetLocation = nodes.find(n => n.id === edge.target)?.data?.locationId;
+                return sourceLocation !== targetLocation;
+            }}).map(edge => ({{
                 id: edge.id,
                 sources: [edge.source],
                 targets: [edge.target],
@@ -603,66 +684,124 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
 
             const elkGraph = {{
                 id: 'root',
-                layoutOptions: elkOptions,
-                children: elkNodes,
-                edges: elkEdges,
+                layoutOptions: {{
+                    ...elkOptions,
+                    'elk.spacing.nodeNode': 150, // More space between containers
+                    'elk.spacing.componentComponent': 100,
+                    'elk.layered.spacing.nodeNodeBetweenLayers': 150,
+                }},
+                children: elkChildren,
+                edges: crossContainerEdges,
             }};
 
             try {{
+                console.log('Running ELK layout with hierarchical structure...');
                 const layoutedGraph = await elk.layout(elkGraph);
+                console.log('ELK layout complete:', layoutedGraph);
                 
                 // Apply positions from ELK layout
                 const layoutedNodes = nodes.map((node) => {{
-                    const elkNode = layoutedGraph.children?.find((n) => n.id === node.id);
-                    return {{
+                    // Find the node in the layout result
+                    let elkNode = null;
+                    let containerOffset = {{ x: 0, y: 0 }};
+                    
+                    // Look for the node in containers first
+                    for (const container of layoutedGraph.children || []) {{
+                        if (container.children) {{
+                            const foundNode = container.children.find(n => n.id === node.id);
+                            if (foundNode) {{
+                                elkNode = foundNode;
+                                containerOffset = {{ x: container.x || 0, y: container.y || 0 }};
+                                break;
+                            }}
+                        }}
+                    }}
+                    
+                    // If not found in containers, look at top level
+                    if (!elkNode) {{
+                        elkNode = layoutedGraph.children?.find(n => n.id === node.id);
+                    }}
+                    
+                    const newNode = {{
                         ...node,
                         position: {{
-                            x: elkNode ? elkNode.x || 0 : 0,
-                            y: elkNode ? elkNode.y || 0 : 0,
+                            x: elkNode ? (elkNode.x || 0) + containerOffset.x : Math.random() * 500,
+                            y: elkNode ? (elkNode.y || 0) + containerOffset.y : Math.random() * 500,
                         }},
                     }};
+                    return newNode;
                 }});
 
-                // Now group nodes by location for visual arrangement
-                const groupedNodes = [];
-                const locationOffsets = {{}};
-                let currentX = 0;
+                console.log('Layouted nodes:', layoutedNodes.length);
+                return layoutedNodes;
+            }} catch (error) {{
+                console.error('ELK layout failed:', error);
+                // Fallback to simple grid layout with better spacing for containers
+                console.log('Using fallback grid layout');
+                const locationGroups = new Map();
+                const orphanNodes = [];
                 
-                Object.keys(locationGroups).forEach((locationId, groupIndex) => {{
-                    const groupNodes = locationGroups[locationId];
-                    const nodesInGroup = layoutedNodes.filter(node => {{
-                        const nodeLocationId = node.data.locationId;
-                        const nodeGroupKey = nodeLocationId !== null && nodeLocationId !== undefined ? nodeLocationId.toString() : 'unassigned';
-                        return nodeGroupKey === locationId;
-                    }});
+                nodes.forEach(node => {{
+                    const nodeLocationId = node.data?.locationId;
+                    if (nodeLocationId !== null && nodeLocationId !== undefined) {{
+                        if (!locationGroups.has(nodeLocationId)) {{
+                            locationGroups.set(nodeLocationId, []);
+                        }}
+                        locationGroups.get(nodeLocationId).push(node);
+                    }} else {{
+                        orphanNodes.push(node);
+                    }}
+                }});
+                
+                let currentX = 0;
+                let currentY = 0;
+                const containerWidth = 500;
+                const containerHeight = 400;
+                const containerSpacing = 100;
+                const containersPerRow = 3;
+                
+                const result = [];
+                let containerIndex = 0;
+                
+                // Layout location groups
+                for (const [locationId, locationNodes] of locationGroups) {{
+                    const containerX = currentX;
+                    const containerY = currentY;
                     
-                    // Calculate group dimensions
-                    const groupWidth = Math.max(300, nodesInGroup.length * 250);
-                    const groupHeight = 200;
-                    
-                    // Position nodes within their group
-                    nodesInGroup.forEach((node, index) => {{
-                        const nodeX = currentX + 50 + (index % 3) * 220;
-                        const nodeY = 80 + Math.floor(index / 3) * 100;
+                    // Layout nodes within container
+                    locationNodes.forEach((node, nodeIndex) => {{
+                        const nodesPerRow = Math.ceil(Math.sqrt(locationNodes.length));
+                        const nodeX = containerX + 50 + (nodeIndex % nodesPerRow) * 220;
+                        const nodeY = containerY + 80 + Math.floor(nodeIndex / nodesPerRow) * 80;
                         
-                        groupedNodes.push({{
+                        result.push({{
                             ...node,
                             position: {{ x: nodeX, y: nodeY }}
                         }});
                     }});
                     
-                    locationOffsets[locationId] = {{ x: currentX, y: 20, width: groupWidth, height: groupHeight }};
-                    currentX += groupWidth + 50;
+                    // Move to next container position
+                    containerIndex++;
+                    if (containerIndex % containersPerRow === 0) {{
+                        currentX = 0;
+                        currentY += containerHeight + containerSpacing;
+                    }} else {{
+                        currentX += containerWidth + containerSpacing;
+                    }}
+                }}
+                
+                // Layout orphan nodes
+                orphanNodes.forEach((node, index) => {{
+                    result.push({{
+                        ...node,
+                        position: {{ 
+                            x: currentX + (index % 5) * 250, 
+                            y: currentY + Math.floor(index / 5) * 100 
+                        }}
+                    }});
                 }});
-
-                return groupedNodes;
-            }} catch (error) {{
-                console.error('ELK layout failed:', error);
-                // Fallback to simple grid layout
-                return nodes.map((node, index) => ({{
-                    ...node,
-                    position: {{ x: (index % 3) * 250, y: Math.floor(index / 3) * 100 }}
-                }}));
+                
+                return result;
             }}
         }};
         
@@ -683,19 +822,28 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
             const onInit = useCallback(async (reactFlowInstance) => {{
                 window.reactFlowInstance = reactFlowInstance;
                 
-                // Apply ELK layout
+                console.log('Initializing graph with', initialNodes.length, 'nodes');
+                
+                // Apply ELK layout to get proper positions
                 const layoutedNodes = await applyElkLayout(initialNodes, initialEdges, currentLayout);
                 
-                // Create location container elements (background rectangles)
+                // Group nodes by location for hierarchical display
                 const locationContainers = [];
-                if (graphData.locations) {{
+                const childNodes = [];
+                
+                if (graphData.locations && graphData.locations.length > 0) {{
+                    console.log('Creating location containers for', graphData.locations.length, 'locations');
+                    
                     graphData.locations.forEach(location => {{
                         // Find nodes in this location
-                        const locationNodes = layoutedNodes.filter(node => 
-                            node.data.locationId !== null && 
-                            node.data.locationId !== undefined && 
-                            node.data.locationId.toString() === location.id.toString()
-                        );
+                        const locationNodes = layoutedNodes.filter(node => {{
+                            const nodeLocationId = node.data?.locationId;
+                            return nodeLocationId !== null && 
+                                   nodeLocationId !== undefined && 
+                                   nodeLocationId.toString() === location.id.toString();
+                        }});
+                        
+                        console.log(`Location ${{location.id}} (${{location.label}}) has ${{locationNodes.length}} nodes`);
                         
                         if (locationNodes.length > 0) {{
                             // Calculate bounding box for this location
@@ -706,104 +854,274 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
                             
                             // Add padding
                             const padding = 30;
+                            const containerX = minX - padding;
+                            const containerY = minY - padding - 30;
+                            
+                            // Generate unique colors for this location
+                            const backgroundColor = generateLocationColor(location.id, graphData.locations.length);
+                            const borderColor = generateLocationBorderColor(location.id, graphData.locations.length);
+                            
+                            // Create parent container
                             locationContainers.push({{
                                 id: `container_${{location.id}}`,
                                 type: 'group',
-                                position: {{ 
-                                    x: minX - padding, 
-                                    y: minY - padding - 30 // Extra space for label
-                                }},
+                                position: {{ x: containerX, y: containerY }},
                                 style: {{
                                     width: maxX - minX + 2 * padding,
                                     height: maxY - minY + 2 * padding + 30,
-                                    backgroundColor: 'rgba(200, 220, 240, 0.3)',
-                                    border: '2px solid #4A90E2',
+                                    backgroundColor: backgroundColor,
+                                    border: `2px solid ${{borderColor}}`,
                                     borderRadius: '8px',
-                                    zIndex: -1,
                                 }},
                                 data: {{ 
                                     label: location.label,
                                     isContainer: true
                                 }},
-                                selectable: false,
-                                draggable: false,
+                                draggable: true,
+                            }});
+                            
+                            // Make nodes children of the container
+                            locationNodes.forEach(node => {{
+                                childNodes.push({{
+                                    ...node,
+                                    parentNode: `container_${{location.id}}`,
+                                    extent: 'parent',
+                                    position: {{
+                                        x: node.position.x - containerX,
+                                        y: node.position.y - containerY
+                                    }}
+                                }});
                             }});
                         }}
                     }});
+                    
+                    // Handle orphan nodes (not in any location) - group them into a grey container
+                    const orphanNodes = layoutedNodes.filter(node => {{
+                        const nodeLocationId = node.data?.locationId;
+                        if (nodeLocationId === null || nodeLocationId === undefined) return true;
+                        
+                        return !graphData.locations.some(loc => 
+                            loc.id.toString() === nodeLocationId.toString()
+                        );
+                    }});
+                    
+                    console.log('Found', orphanNodes.length, 'orphan nodes');
+                    
+                    if (orphanNodes.length > 0) {{
+                        // Calculate bounding box for orphan nodes
+                        const minX = Math.min(...orphanNodes.map(n => n.position.x));
+                        const minY = Math.min(...orphanNodes.map(n => n.position.y));
+                        const maxX = Math.max(...orphanNodes.map(n => n.position.x + 200));
+                        const maxY = Math.max(...orphanNodes.map(n => n.position.y + 60));
+                        
+                        // Add padding
+                        const padding = 30;
+                        const containerX = minX - padding;
+                        const containerY = minY - padding - 30;
+                        
+                        // Create grey container for orphan nodes
+                        locationContainers.push({{
+                            id: 'container_null',
+                            type: 'group',
+                            position: {{ x: containerX, y: containerY }},
+                            style: {{
+                                width: maxX - minX + 2 * padding,
+                                height: maxY - minY + 2 * padding + 30,
+                                backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                border: '2px solid #999999',
+                                borderRadius: '8px',
+                            }},
+                            data: {{ 
+                                label: 'Internal/Unassigned',
+                                isContainer: true
+                            }},
+                            draggable: true,
+                        }});
+                        
+                        // Make orphan nodes children of the grey container
+                        orphanNodes.forEach(node => {{
+                            childNodes.push({{
+                                ...node,
+                                parentNode: 'container_null',
+                                extent: 'parent',
+                                position: {{
+                                    x: node.position.x - containerX,
+                                    y: node.position.y - containerY
+                                }}
+                            }});
+                        }});
+                    }}
+                }} else {{
+                    // No locations defined, use all nodes as-is
+                    console.log('No locations defined, using flat layout');
+                    childNodes.push(...layoutedNodes);
                 }}
                 
-                // Combine containers and nodes
-                const allElements = [...locationContainers, ...layoutedNodes];
-                console.log('Location containers created:', locationContainers.length);
-                console.log('Total elements:', allElements.length);
+                // Combine containers and child nodes
+                const allElements = [...locationContainers, ...childNodes];
+                console.log('Setting', allElements.length, 'total elements:', {{
+                    containers: locationContainers.length,
+                    nodes: childNodes.length
+                }});
                 setNodes(allElements);
+                
+                // Ensure all edges are properly set
+                console.log('Setting', initialEdges.length, 'edges');
+                setEdges(initialEdges);
                 
                 // Fit view after layout is applied
                 setTimeout(() => {{
-                    reactFlowInstance.fitView();
-                }}, 100);
+                    console.log('Fitting view...');
+                    reactFlowInstance.fitView({{ padding: 0.1 }});
+                }}, 200);
             }}, [setNodes, currentLayout]);
 
             // Apply elk layout with selected algorithm
             const applyLayout = useCallback(async (layoutType = currentLayout) => {{
+                console.log('Applying layout:', layoutType);
+                
                 // Only layout the actual graph nodes, not containers
-                const actualNodes = nodes.filter(node => !node.data.isContainer);
+                const actualNodes = nodes.filter(node => !node.data?.isContainer);
+                console.log('Laying out', actualNodes.length, 'actual nodes');
+                
+                if (actualNodes.length === 0) {{
+                    console.log('No nodes to layout');
+                    return;
+                }}
+                
                 const layoutedNodes = await applyElkLayout(actualNodes, edges, layoutType);
                 
-                // Create location container elements
+                // Create new containers and child relationships
                 const locationContainers = [];
-                if (graphData.locations) {{
+                const childNodes = [];
+                
+                if (graphData.locations && graphData.locations.length > 0) {{
                     graphData.locations.forEach(location => {{
-                        // Find nodes in this location
-                        const locationNodes = layoutedNodes.filter(node => 
-                            node.data.locationId !== null && 
-                            node.data.locationId !== undefined && 
-                            node.data.locationId.toString() === location.id.toString()
-                        );
+                        const locationNodes = layoutedNodes.filter(node => {{
+                            const nodeLocationId = node.data?.locationId;
+                            return nodeLocationId !== null && 
+                                   nodeLocationId !== undefined && 
+                                   nodeLocationId.toString() === location.id.toString();
+                        }});
                         
                         if (locationNodes.length > 0) {{
-                            // Calculate bounding box for this location
+                            // Calculate bounding box
                             const minX = Math.min(...locationNodes.map(n => n.position.x));
                             const minY = Math.min(...locationNodes.map(n => n.position.y));
                             const maxX = Math.max(...locationNodes.map(n => n.position.x + 200));
                             const maxY = Math.max(...locationNodes.map(n => n.position.y + 60));
                             
-                            // Add padding
                             const padding = 30;
+                            const containerX = minX - padding;
+                            const containerY = minY - padding - 30;
+                            
+                            // Generate unique colors for this location
+                            const backgroundColor = generateLocationColor(location.id, graphData.locations.length);
+                            const borderColor = generateLocationBorderColor(location.id, graphData.locations.length);
+                            
+                            // Create container
                             locationContainers.push({{
                                 id: `container_${{location.id}}`,
                                 type: 'group',
-                                position: {{ 
-                                    x: minX - padding, 
-                                    y: minY - padding - 30 // Extra space for label
-                                }},
+                                position: {{ x: containerX, y: containerY }},
                                 style: {{
                                     width: maxX - minX + 2 * padding,
                                     height: maxY - minY + 2 * padding + 30,
-                                    backgroundColor: 'rgba(200, 220, 240, 0.3)',
-                                    border: '2px solid #4A90E2',
+                                    backgroundColor: backgroundColor,
+                                    border: `2px solid ${{borderColor}}`,
                                     borderRadius: '8px',
-                                    zIndex: -1,
                                 }},
                                 data: {{ 
                                     label: location.label,
                                     isContainer: true
                                 }},
-                                selectable: false,
-                                draggable: false,
+                                draggable: true,
+                            }});
+                            
+                            // Add child nodes
+                            locationNodes.forEach(node => {{
+                                childNodes.push({{
+                                    ...node,
+                                    parentNode: `container_${{location.id}}`,
+                                    extent: 'parent',
+                                    position: {{
+                                        x: node.position.x - containerX,
+                                        y: node.position.y - containerY
+                                    }}
+                                }});
                             }});
                         }}
                     }});
+                    
+                    // Handle orphan nodes - group them into a grey container
+                    const orphanNodes = layoutedNodes.filter(node => {{
+                        const nodeLocationId = node.data?.locationId;
+                        if (nodeLocationId === null || nodeLocationId === undefined) return true;
+                        return !graphData.locations.some(loc => 
+                            loc.id.toString() === nodeLocationId.toString()
+                        );
+                    }});
+                    
+                    if (orphanNodes.length > 0) {{
+                        // Calculate bounding box for orphan nodes
+                        const minX = Math.min(...orphanNodes.map(n => n.position.x));
+                        const minY = Math.min(...orphanNodes.map(n => n.position.y));
+                        const maxX = Math.max(...orphanNodes.map(n => n.position.x + 200));
+                        const maxY = Math.max(...orphanNodes.map(n => n.position.y + 60));
+                        
+                        const padding = 30;
+                        const containerX = minX - padding;
+                        const containerY = minY - padding - 30;
+                        
+                        // Create grey container for orphan nodes
+                        locationContainers.push({{
+                            id: 'container_null',
+                            type: 'group',
+                            position: {{ x: containerX, y: containerY }},
+                            style: {{
+                                width: maxX - minX + 2 * padding,
+                                height: maxY - minY + 2 * padding + 30,
+                                backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                border: '2px solid #999999',
+                                borderRadius: '8px',
+                            }},
+                            data: {{ 
+                                label: 'Internal/Unassigned',
+                                isContainer: true
+                            }},
+                            draggable: true,
+                        }});
+                        
+                        // Make orphan nodes children of the grey container
+                        orphanNodes.forEach(node => {{
+                            childNodes.push({{
+                                ...node,
+                                parentNode: 'container_null',
+                                extent: 'parent',
+                                position: {{
+                                    x: node.position.x - containerX,
+                                    y: node.position.y - containerY
+                                }}
+                            }});
+                        }});
+                    }}
+                }} else {{
+                    childNodes.push(...layoutedNodes);
                 }}
                 
-                // Combine containers and nodes
-                const allElements = [...locationContainers, ...layoutedNodes];
+                const allElements = [...locationContainers, ...childNodes];
+                console.log('Updating to', allElements.length, 'elements');
                 setNodes(allElements);
+                
+                // Ensure all edges are properly maintained
+                console.log('Maintaining', initialEdges.length, 'edges');
+                setEdges(initialEdges);
+                
                 setTimeout(() => {{
                     if (window.reactFlowInstance) {{
-                        window.reactFlowInstance.fitView();
+                        window.reactFlowInstance.fitView({{ padding: 0.1 }});
                     }}
-                }}, 100);
+                }}, 200);
             }}, [nodes, edges, setNodes, currentLayout]);
 
             // Handle layout change
@@ -911,17 +1229,29 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
                         </div>
                         <div className="legend-section">
                             <h4>Locations</h4>
+                            {{graphData.locations && graphData.locations.map((location, index) => (
+                                <div key={{location.id}} className="legend-item">
+                                    <div 
+                                        className="location-legend-color" 
+                                        style={{{{
+                                            backgroundColor: generateLocationColor(location.id, graphData.locations.length),
+                                            borderColor: generateLocationBorderColor(location.id, graphData.locations.length),
+                                            border: '1px solid'
+                                        }}}}
+                                    ></div>
+                                    <span>{{location.label}}</span>
+                                </div>
+                            ))}}
                             <div className="legend-item">
-                                <div className="location-legend-color" style={{{{backgroundColor: '#fff0e6', borderColor: '#ffccb3'}}}}></div>
-                                <span>Cluster</span>
-                            </div>
-                            <div className="legend-item">
-                                <div className="location-legend-color" style={{{{backgroundColor: '#e6fff3', borderColor: '#b3ffcc'}}}}></div>
-                                <span>Process</span>
-                            </div>
-                            <div className="legend-item">
-                                <div className="location-legend-color" style={{{{backgroundColor: '#f5f5f5', borderColor: '#cccccc'}}}}></div>
-                                <span>External</span>
+                                <div 
+                                    className="location-legend-color" 
+                                    style={{{{
+                                        backgroundColor: 'rgba(200, 200, 200, 0.2)',
+                                        borderColor: '#999999',
+                                        border: '1px solid'
+                                    }}}}
+                                ></div>
+                                <span>Internal/Unassigned</span>
                             </div>
                         </div>
                     </div>
@@ -934,6 +1264,9 @@ fn save_and_open_reactflow_browser(reactflow_json: &str, filename: &str) -> Resu
                         onConnect={{onConnect}}
                         onNodeClick={{onNodeClick}}
                         onInit={{onInit}}
+                        connectionMode="loose"
+                        elevateEdgesOnSelect={{true}}
+                        edgesReconnectable={{false}}
                         fitView
                     >
                         <Controls />
